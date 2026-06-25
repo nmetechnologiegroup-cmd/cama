@@ -129,7 +129,8 @@ CREATE TABLE site_settings (
     hero_subtitle TEXT,
     menu_visibility TEXT, -- JSON object
     section_titles TEXT, -- JSON object
-    footer TEXT -- JSON object
+    footer TEXT, -- JSON object
+    faqs TEXT -- JSON array
 );
 
 -- 7. Table des JOURNAUX D'ACTIONS (Action Logs)
@@ -206,7 +207,8 @@ INSERT INTO site_settings (
     hero_subtitle, 
     menu_visibility, 
     section_titles, 
-    footer
+    footer,
+    faqs
 ) VALUES (
     1,
     'La CAMA officiellement lancée !',
@@ -233,5 +235,6 @@ INSERT INTO site_settings (
     'La Caisse d''Assurance Maladie des Armées (CAMA) offre une prise en charge sanitaire élargie aux vaillants combattants des Forces Armées Nationales et à leurs familles.',
     '{"about":true,"services":true,"news":true,"contact":true}',
     '{"prestations":"Nos prestations","services":"Services en ligne"}',
-    '{"copyright":"© 2026 CAMA Burkina Faso. Tous droits réservés.","liensRapides":[{"label":"Accueil","url":"/"},{"label":"Notre Mission","url":"/about"},{"label":"Catalogue des Services","url":"/services"},{"label":"Actualités","url":"/news"}],"espaceNumerique":[{"label":"Espace Assuré","url":"/login"},{"label":"Plateforme d''enrôlement","url":"/login"},{"label":"Portail Administrateur","url":"/login"},{"label":"Simulateur de prestations","url":"/services"}],"contactTitle":"Contactez-nous","address":"Camp Guillaume Ouédraogo, Ouagadougou, Burkina Faso","phone":"+226 25 00 00 00","email":"contact@cama.bf","description":"Caisse d''Assurance Maladie des Armées. Garantir une couverture santé universelle et solidaire pour nos forces armées et leurs familles.","badgeText":"La Patrie ou la Mort, nous vaincrons !"}'
+    '{"copyright":"© 2026 CAMA Burkina Faso. Tous droits réservés.","liensRapides":[{"label":"Accueil","url":"/"},{"label":"Notre Mission","url":"/about"},{"label":"Catalogue des Services","url":"/services"},{"label":"Actualités","url":"/news"}],"espaceNumerique":[{"label":"Espace Assuré","url":"/login"},{"label":"Plateforme d''enrôlement","url":"/login"},{"label":"Portail Administrateur","url":"/login"},{"label":"Simulateur de prestations","url":"/services"}],"contactTitle":"Contactez-nous","address":"Camp Guillaume Ouédraogo, Ouagadougou, Burkina Faso","phone":"+226 25 00 00 00","email":"contact@cama.bf","description":"Caisse d''Assurance Maladie des Armées. Garantir une couverture santé universelle et solidaire pour nos forces armées et leurs familles.","badgeText":"La Patrie ou la Mort, nous vaincrons !"}',
+    '[{"id":1,"q":"Comment s''enrôler ?","a":"Pour s''enrôler, connectez-vous à votre Espace Assuré, cliquez sur ''Nouveau membre'' dans votre tableau de bord, et téléversez des justificatifs (acte de naissance, de mariage). Nos agents valideront votre dossier sous 48 heures.","active":true},{"id":2,"q":"Suivre mes remboursements ?","a":"Vos demandes de remboursement et dossiers de soins sont suivis en ligne en temps réel. Rendez-vous dans votre Espace Assuré au menu de ''Suivi des dossiers'' pour voir leur statut de validation.","active":true},{"id":3,"q":"Où sont les cliniques agréées ?","a":"La CAMA dispose d''un réseau conventionné de 128 cliniques et officines. Vous trouverez l''annuaire complet et cartographié dans notre catalogue des services section ''Réseau de soins''.","active":true},{"id":4,"q":"Quels sont les taux de couverture ?","a":"La CAMA prend en charge de 70% à 100% des frais de santé selon la nature des soins et le type de d''intervention médicale, dans le strict respect de la réglementation militaire de prévoyance.","active":true}]'
 );

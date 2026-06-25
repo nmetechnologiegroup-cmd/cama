@@ -61,14 +61,18 @@ SQLite utilise un simple fichier local.
 
 ### OPTION B : Déploiement avec MariaDB ou MySQL
 
-1. Lancez votre serveur local MySQL/MariaDB (via XAMPP, WampServer ou Docker).
+1. Lancez votre serveur local MySQL/MariaDB (via XAMPP, WampServer, MAMP ou Docker).
 2. Connectez-vous à votre console de gestion (ex: phpMyAdmin ou DBeaver) et créez une base de données vide nommée `cama_db` avec un encodage UTF-8 :
    ```sql
    CREATE DATABASE cama_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
    ```
-3. Exécutez le script SQL d'initialisation dans votre nouvelle base de données `cama_db` :
+3. Exécutez le script SQL d'initialisation des tables dans votre nouvelle base de données `cama_db` :
    ```bash
-   mysql -u root -p cama_db < mariadb_setup.sql
+   mysql -u root -p cama_db < database_setup/mariadb_setup.sql
+   ```
+4. Injectez le jeu complet de données de production (contenant tous les utilisateurs de test, les actualités, la configuration du site et la **Foire Aux Questions (FAQ)** réactivée) :
+   ```bash
+   mysql -u root -p cama_db < database_setup/mariadb_data_dump.sql
    ```
 
 ---

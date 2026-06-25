@@ -137,9 +137,14 @@ npm install
   sqlite3 cama.db < database_setup/sqlite_setup.sql
   ```
 * **Pour MariaDB (Option B) :**
-  ```bash
-  mysql -u cama_user -p cama_db < database_setup/mariadb_setup.sql
-  ```
+  1. Générez d'abord la structure des tables et l'initialisation de base :
+     ```bash
+     mysql -u cama_user -p cama_db < database_setup/mariadb_setup.sql
+     ```
+  2. Injectez l'ensemble des données de production actuelles, y compris les comptes de démonstration, les actualités, les configurations, les centres affiliés et la **Foire Aux Questions (FAQ)** restaurée :
+     ```bash
+     mysql -u cama_user -p cama_db < database_setup/mariadb_data_dump.sql
+     ```
 
 ### 3. Création du fichier de variables d'environnement (`.env`) :
 Créez le fichier de configuration de l'API backend :

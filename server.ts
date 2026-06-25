@@ -11,7 +11,7 @@ dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   app.use(cors());
   app.use(express.json());
@@ -390,7 +390,8 @@ async function startServer() {
         heroSubtitle: row.hero_subtitle,
         menuVisibility: JSON.parse(row.menu_visibility || '{}'),
         sectionTitles: JSON.parse(row.section_titles || '{}'),
-        footer: JSON.parse(row.footer || '{}')
+        footer: JSON.parse(row.footer || '{}'),
+        faqs: JSON.parse(row.faqs || '[]')
       };
       res.json(settings);
     } catch (error: any) {
@@ -407,7 +408,7 @@ async function startServer() {
           hero_bg_watermark_opacity = ?, prestations = ?, dg_name = ?, dg_message = ?, dg_citation = ?, dg_image = ?, 
           about_content = ?, statistics = ?, facebook_page_url = ?, quality_citation = ?, quality_author = ?, 
           testimonials = ?, partners = ?, hero_image = ?, hero_title = ?, hero_subtitle = ?, menu_visibility = ?, 
-          section_titles = ?, footer = ?
+          section_titles = ?, footer = ?, faqs = ?
         WHERE id = 1
       `;
       const params = [
@@ -415,7 +416,8 @@ async function startServer() {
         s.heroBgWatermarkOpacity, JSON.stringify(s.prestations || []), s.dgName, s.dgMessage, s.dgCitation, s.dgImage,
         JSON.stringify(s.aboutContent || {}), JSON.stringify(s.statistics || []), s.facebookPageUrl, s.qualityCitation, s.qualityAuthor,
         JSON.stringify(s.testimonials || []), JSON.stringify(s.partners || []), s.heroImage, s.heroTitle, s.heroSubtitle,
-        JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {})
+        JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
+        JSON.stringify(s.faqs || [])
       ];
       await dbRun(sql, params);
       res.json({ message: 'Configuration du site mise à jour.' });
