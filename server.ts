@@ -13,6 +13,16 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  const safeParse = (val: any, fallback: any = []) => {
+    if (val === undefined || val === null) return fallback;
+    if (typeof val === 'object') return val;
+    try {
+      return JSON.parse(val);
+    } catch (e) {
+      return fallback;
+    }
+  };
+
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -360,10 +370,103 @@ async function startServer() {
   // 5. SITE SETTINGS (Configuration)
   app.get('/api/site-settings', async (req, res) => {
     try {
-      const row = await dbGet('SELECT * FROM site_settings WHERE id = 1');
+      let row = await dbGet('SELECT * FROM site_settings LIMIT 1');
       if (!row) {
-        // Return default settings if not initialized properly
-        return res.json({});
+        // If the table is empty, let's insert a default row so it's initialized!
+        const defaultSettings = {
+          popup_title: "La CAMA officiellement lancée !",
+          popup_subtitle: "La santé de nos héros, notre priorité.",
+          popup_content: "La CAMA, soucieuse du bien-être des soldats engagés dans la lutte, vient à point nommé étendre ses services à la famille de nos forces armées nationales. Découvrez le nouveau portail de gestion de vos prestations.",
+          popup_active: 1,
+          popup_image: "https://images.unsplash.com/photo-1579548122080-c11707ea8211?q=80&w=2070&auto=format&fit=crop",
+          popup_max_views: 2,
+          hero_bg_watermark_opacity: 25,
+          prestations: '[]',
+          dg_name: "Colonel-Major Saïdou YONABA",
+          dg_message: "Message",
+          dg_citation: "Citation",
+          dg_image: "",
+          about_content: '{}',
+          statistics: '[]',
+          facebook_page_url: "https://facebook.com/CAMA_BF",
+          quality_citation: "",
+          quality_author: "",
+          testimonials: '[]',
+          partners: '[]',
+          hero_image: "",
+          hero_title: "",
+          hero_subtitle: "",
+          menu_visibility: '{"about":true,"services":true,"news":true,"contact":true,"vision":true,"rgpd":true}',
+          section_titles: '{"prestations":"Nos prestations","services":"Services en ligne"}',
+          footer: JSON.stringify({
+            copyright: "© 2026 CAMA Burkina Faso. Tous droits réservés.",
+            liensRapides: [
+              { label: "Accueil", url: "/" },
+              { label: "Notre Mission", url: "/about" },
+              { label: "Catalogue des Services", url: "/services" },
+              { label: "Actualités", url: "/news" }
+            ],
+            espaceNumerique: [
+              { label: "Espace Assuré", url: "/login" },
+              { label: "Plateforme d'enrôlement", url: "/login" },
+              { label: "Portail Administrateur", url: "/login" },
+              { label: "Simulateur de prestations", url: "/services" }
+            ],
+            contactTitle: "Contactez-nous",
+            address: "Camp Guillaume Ouédraogo, Ouagadougou, Burkina Faso",
+            phone: "+226 25 00 00 00",
+            email: "contact@cama.bf",
+            description: "Caisse d'Assurance Maladie des Armées. Garantir une couverture santé universelle et solidaire pour nos forces armées et leurs familles.",
+            badgeText: "La Patrie ou la Mort, nous vaincrons !"
+          }),
+          faqs: JSON.stringify([
+            {
+              id: 1,
+              q: "Comment s'enrôler ?",
+              a: "Pour s'enrôler, connectez-vous à votre Espace Assuré, cliquez sur 'Nouveau membre' dans votre tableau de bord, et téléversez des justificatifs (acte de naissance, de mariage). Nos agents valideront votre dossier sous 48 heures.",
+              active: true
+            },
+            {
+              id: 2,
+              q: "Suivre mes remboursements ?",
+              a: "Vos demandes de remboursement et dossiers de soins sont suivis en ligne en temps réel. Rendez-vous dans votre Espace Assuré au menu de 'Suivi des dossiers' pour voir leur statut de validation.",
+              active: true
+            },
+            {
+              id: 3,
+              q: "Où sont les cliniques agréées ?",
+              a: "La CAMA dispose d'un réseau conventionné de 128 cliniques et officines. Vous trouverez l'annuaire complet et cartographié dans notre catalogue des services section 'Réseau de soins'.",
+              active: true
+            },
+            {
+              id: 4,
+              q: "Quels sont les taux de couverture ?",
+              a: "La CAMA prend en charge de 70% à 100% des frais de santé selon la nature des soins et le type d'intervention médicale, dans le strict respect de la réglementation militaire de prévoyance.",
+              active: true
+            }
+          ])
+        };
+        
+        const sql = `
+          INSERT INTO site_settings (
+            id, popup_title, popup_subtitle, popup_content, popup_active, popup_image, popup_max_views, 
+            hero_bg_watermark_opacity, prestations, dg_name, dg_message, dg_citation, dg_image, 
+            about_content, statistics, facebook_page_url, quality_citation, quality_author, 
+            testimonials, partners, hero_image, hero_title, hero_subtitle, menu_visibility, 
+            section_titles, footer, faqs
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const params = [
+          1, defaultSettings.popup_title, defaultSettings.popup_subtitle, defaultSettings.popup_content, defaultSettings.popup_active,
+          defaultSettings.popup_image, defaultSettings.popup_max_views, defaultSettings.hero_bg_watermark_opacity, defaultSettings.prestations,
+          defaultSettings.dg_name, defaultSettings.dg_message, defaultSettings.dg_citation, defaultSettings.dg_image,
+          defaultSettings.about_content, defaultSettings.statistics, defaultSettings.facebook_page_url, defaultSettings.quality_citation,
+          defaultSettings.quality_author, defaultSettings.testimonials, defaultSettings.partners, defaultSettings.hero_image,
+          defaultSettings.hero_title, defaultSettings.hero_subtitle, defaultSettings.menu_visibility, defaultSettings.section_titles,
+          defaultSettings.footer, defaultSettings.faqs
+        ];
+        await dbRun(sql, params);
+        row = await dbGet('SELECT * FROM site_settings LIMIT 1');
       }
       
       const settings = {
@@ -374,25 +477,25 @@ async function startServer() {
         popupImage: row.popup_image,
         popupMaxViews: row.popup_max_views,
         heroBgWatermarkOpacity: row.hero_bg_watermark_opacity,
-        prestations: JSON.parse(row.prestations || '[]'),
+        prestations: safeParse(row.prestations, []),
         dgName: row.dg_name,
         dgMessage: row.dg_message,
         dgCitation: row.dg_citation,
         dgImage: row.dg_image,
-        aboutContent: JSON.parse(row.about_content || '{}'),
-        statistics: JSON.parse(row.statistics || '[]'),
+        aboutContent: safeParse(row.about_content, {}),
+        statistics: safeParse(row.statistics, []),
         facebookPageUrl: row.facebook_page_url,
         qualityCitation: row.quality_citation,
         qualityAuthor: row.quality_author,
-        testimonials: JSON.parse(row.testimonials || '[]'),
-        partners: JSON.parse(row.partners || '[]'),
+        testimonials: safeParse(row.testimonials, []),
+        partners: safeParse(row.partners, []),
         heroImage: row.hero_image,
         heroTitle: row.hero_title,
         heroSubtitle: row.hero_subtitle,
-        menuVisibility: JSON.parse(row.menu_visibility || '{}'),
-        sectionTitles: JSON.parse(row.section_titles || '{}'),
-        footer: JSON.parse(row.footer || '{}'),
-        faqs: JSON.parse(row.faqs || '[]')
+        menuVisibility: safeParse(row.menu_visibility, {}),
+        sectionTitles: safeParse(row.section_titles, {}),
+        footer: safeParse(row.footer, {}),
+        faqs: safeParse(row.faqs, [])
       };
       res.json(settings);
     } catch (error: any) {
@@ -403,24 +506,48 @@ async function startServer() {
   app.put('/api/site-settings', async (req, res) => {
     const s = req.body;
     try {
-      const sql = `
-        UPDATE site_settings SET 
-          popup_title = ?, popup_subtitle = ?, popup_content = ?, popup_active = ?, popup_image = ?, popup_max_views = ?, 
-          hero_bg_watermark_opacity = ?, prestations = ?, dg_name = ?, dg_message = ?, dg_citation = ?, dg_image = ?, 
-          about_content = ?, statistics = ?, facebook_page_url = ?, quality_citation = ?, quality_author = ?, 
-          testimonials = ?, partners = ?, hero_image = ?, hero_title = ?, hero_subtitle = ?, menu_visibility = ?, 
-          section_titles = ?, footer = ?, faqs = ?
-        WHERE id = 1
-      `;
-      const params = [
-        s.popupTitle, s.popupSubtitle, s.popupContent, s.popupActive ? 1 : 0, s.popupImage, s.popupMaxViews,
-        s.heroBgWatermarkOpacity, JSON.stringify(s.prestations || []), s.dgName, s.dgMessage, s.dgCitation, s.dgImage,
-        JSON.stringify(s.aboutContent || {}), JSON.stringify(s.statistics || []), s.facebookPageUrl, s.qualityCitation, s.qualityAuthor,
-        JSON.stringify(s.testimonials || []), JSON.stringify(s.partners || []), s.heroImage, s.heroTitle, s.heroSubtitle,
-        JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
-        JSON.stringify(s.faqs || [])
-      ];
-      await dbRun(sql, params);
+      const row = await dbGet('SELECT id FROM site_settings LIMIT 1');
+      
+      if (row) {
+        const sql = `
+          UPDATE site_settings SET 
+            popup_title = ?, popup_subtitle = ?, popup_content = ?, popup_active = ?, popup_image = ?, popup_max_views = ?, 
+            hero_bg_watermark_opacity = ?, prestations = ?, dg_name = ?, dg_message = ?, dg_citation = ?, dg_image = ?, 
+            about_content = ?, statistics = ?, facebook_page_url = ?, quality_citation = ?, quality_author = ?, 
+            testimonials = ?, partners = ?, hero_image = ?, hero_title = ?, hero_subtitle = ?, menu_visibility = ?, 
+            section_titles = ?, footer = ?, faqs = ?
+          WHERE id = ?
+        `;
+        const params = [
+          s.popupTitle, s.popupSubtitle, s.popupContent, s.popupActive ? 1 : 0, s.popupImage, s.popupMaxViews,
+          s.heroBgWatermarkOpacity, JSON.stringify(s.prestations || []), s.dgName, s.dgMessage, s.dgCitation, s.dgImage,
+          JSON.stringify(s.aboutContent || {}), JSON.stringify(s.statistics || []), s.facebookPageUrl, s.qualityCitation, s.qualityAuthor,
+          JSON.stringify(s.testimonials || []), JSON.stringify(s.partners || []), s.heroImage, s.heroTitle, s.heroSubtitle,
+          JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
+          JSON.stringify(s.faqs || []),
+          row.id
+        ];
+        await dbRun(sql, params);
+      } else {
+        const sql = `
+          INSERT INTO site_settings (
+            id, popup_title, popup_subtitle, popup_content, popup_active, popup_image, popup_max_views, 
+            hero_bg_watermark_opacity, prestations, dg_name, dg_message, dg_citation, dg_image, 
+            about_content, statistics, facebook_page_url, quality_citation, quality_author, 
+            testimonials, partners, hero_image, hero_title, hero_subtitle, menu_visibility, 
+            section_titles, footer, faqs
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const params = [
+          1, s.popupTitle, s.popupSubtitle, s.popupContent, s.popupActive ? 1 : 0, s.popupImage, s.popupMaxViews,
+          s.heroBgWatermarkOpacity, JSON.stringify(s.prestations || []), s.dgName, s.dgMessage, s.dgCitation, s.dgImage,
+          JSON.stringify(s.aboutContent || {}), JSON.stringify(s.statistics || []), s.facebookPageUrl, s.qualityCitation, s.qualityAuthor,
+          JSON.stringify(s.testimonials || []), JSON.stringify(s.partners || []), s.heroImage, s.heroTitle, s.heroSubtitle,
+          JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
+          JSON.stringify(s.faqs || [])
+        ];
+        await dbRun(sql, params);
+      }
       res.json({ message: 'Configuration du site mise à jour.' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
