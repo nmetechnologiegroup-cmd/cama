@@ -1,12 +1,14 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Shield, Target, Eye, Users, ChevronRight, Award } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../lib/LanguageContext';
-import { getSiteSettings } from '../lib/dataStore';
+import { getSiteSettings, DEFAULT_SITE_SETTINGS } from '../lib/dataStore';
 
 export default function About() {
   const { t } = useLanguage();
-  const settings = getSiteSettings();
+  const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => { getSiteSettings().then(setSettings); }, []);
   const about = settings.aboutContent;
 
   return (

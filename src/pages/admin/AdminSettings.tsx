@@ -1,10 +1,11 @@
 import { Save, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
-import { getSiteSettings, saveSiteSettings } from '../../lib/dataStore';
+import { getSiteSettings, saveSiteSettings, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
 
 export default function AdminSettings() {
-  const [settings, setSettings] = useState(() => getSiteSettings());
+  const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => { getSiteSettings().then(setSettings); }, []);
   const [showToast, setShowToast] = useState(false);
   const [isMaintenance, setIsMaintenance] = useState(false);
 

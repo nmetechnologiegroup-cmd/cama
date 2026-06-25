@@ -1,12 +1,14 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Shield, ChevronRight, Lock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../lib/LanguageContext';
-import { getSiteSettings } from '../lib/dataStore';
+import { getSiteSettings, DEFAULT_SITE_SETTINGS } from '../lib/dataStore';
 
 export default function RGPD() {
   const { t } = useLanguage();
-  const settings = getSiteSettings();
+  const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => { getSiteSettings().then(setSettings); }, []);
   const rgpdContent = settings.rgpdContent;
 
   return (

@@ -44,7 +44,9 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
+  useEffect(() => { getRequests().then(setRequests); }, []);
   const [logs, setLogs] = useState<any[]>([]);
+  useEffect(() => { getLogs().then(setLogs); }, []);
   
   // Modals and tabs state
   const [showModal, setShowModal] = useState(false);
@@ -84,7 +86,13 @@ export default function Dashboard() {
       navigate('/login');
       return;
     }
-    const session = JSON.parse(sessionStr);
+    let session = null;
+    try {
+      session = JSON.parse(sessionStr);
+    } catch (e) {
+      navigate('/login');
+      return;
+    }
     if (session.role === 'admin') {
       navigate('/admin');
       return;
@@ -95,9 +103,9 @@ export default function Dashboard() {
   }, [navigate]);
 
   const refreshData = (userId: number) => {
-    const allRequests = getRequests();
-    setRequests(allRequests.filter(r => r.userId === userId));
-    setLogs(getLogs(userId));
+    
+    setRequests(requests.filter(r => r.userId === userId));
+    getLogs(userId).then(setLogs);
   };
 
   const handleLogout = () => {
@@ -536,7 +544,7 @@ export default function Dashboard() {
           </div>
           <div className="flex gap-3">
             <button 
-              onClick={() => { 
+              onClick={async () => { 
                 setEditingRequest(null); 
                 setFormData({ 
                   membre: '', 

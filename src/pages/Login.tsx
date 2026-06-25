@@ -18,7 +18,7 @@ export default function Login() {
 
   const navigate = useNavigate();
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -28,7 +28,7 @@ export default function Login() {
       return;
     }
 
-    const users = getUsers();
+    const users = await getUsers();
     const user = users.find(u => u.email === email && (u.password === password || password === 'password123'));
 
     if (user) {
@@ -39,7 +39,7 @@ export default function Login() {
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -48,7 +48,7 @@ export default function Login() {
       return;
     }
 
-    const users = getUsers();
+    const users = await getUsers();
     if (users.some(u => u.email === email)) {
       setError('Cet email est déjà utilisé');
       return;

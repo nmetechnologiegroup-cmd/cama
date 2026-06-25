@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, Fragment } from 'react';
+import React, { useState, useMemo, useRef, Fragment, useEffect } from 'react';
 import { 
   Search, 
   CheckCircle, 
@@ -39,12 +39,15 @@ import {
   addRequest, 
   editRequest, 
   deleteRequest,
-  getSiteSettings,
+  getSiteSettings, DEFAULT_SITE_SETTINGS,
   getUsers
 } from '../../lib/dataStore';
 
 export default function AdminDossiers() {
-  const [requests, setRequests] = useState<Request[]>(() => getRequests());
+  const [requests, setRequests] = useState<Request[]>([]);
+  useEffect(() => { getRequests().then(setRequests); }, []);
+  const [users, setUsers] = useState<any[]>([]);
+  useEffect(() => { getUsers().then(setUsers); }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'Tous' | 'En attente' | 'Validé' | 'Rejeté' | 'Modif. à Valider'>('Tous');
   
@@ -97,7 +100,13 @@ export default function AdminDossiers() {
   // Simulated Email logs
   const [emailLogs, setEmailLogs] = useState<any[]>(() => {
     const saved = localStorage.getItem('cama_email_logs');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        // ignore and fall through
+      }
+    }
     return [
       { id: 'em-1', recipient: 'i.kabore@defense.bf', subject: 'CAMA - Demande de pièces complémentaires', content: 'Votre dossier d’enrôlement pour KABORE Alimata requiert une pièce complémentaire: Acte de mariage légalisé ou certifié.', date: '21 Juin 2026 à 10:45', status: 'sent' },
       { id: 'em-2', recipient: 'y.diallo@defense.bf', subject: 'CAMA - Validation de dossier d’ayant droit', content: 'Bonne nouvelle ! Le dossier de DIALLO Oumar a été validé. Votre numéro de carte CAMA attribué est CM-2026-BF-1092.', date: '20 Juin 2026 à 15:30', status: 'sent' }
@@ -135,9 +144,9 @@ export default function AdminDossiers() {
       .replace(/{motif}/g, reason || 'Non précisé');
   };
 
-  const handleOpenSubscriberInfo = (matricule: string) => {
-    const users = getUsers();
-    const user = users.find(u => u.matricule === matricule);
+  const handleOpenSubscriberInfo = async (matricule: string) => {
+    const users = await getUsers();
+    const user = users?.find(u => u.matricule === matricule);
     if (user) {
       setSelectedSubscriber(user);
       setIsSubscriberModalOpen(true);
@@ -146,8 +155,8 @@ export default function AdminDossiers() {
     }
   };
 
-  const handleValidate = (id: string, newStatut: 'Validé' | 'Rejeté', reason?: string) => {
-    const updated = updateRequestStatus(id, newStatut);
+  const handleValidate = async (id: string, newStatut: 'Validé' | 'Rejeté', reason?: string) => {
+    const updated = await updateRequestStatus(id, newStatut);
     
     // Auto-generate CAMA card number on manual validation if none exists
     const finalRequests = updated.map(r => {
@@ -160,14 +169,14 @@ export default function AdminDossiers() {
 
     if (newStatut === 'Validé') {
       // Save updated list with generated CAMA card
-      finalRequests.forEach(r => {
-        if (r.id === id) editRequest(r);
-      });
+      for (const r of finalRequests) {
+        if (r.id === id) await editRequest(r);
+      }
     }
 
     const req = finalRequests.find(r => r.id === id);
     if (req) {
-      const settings = getSiteSettings();
+      const settings = await getSiteSettings();
       const templates = settings.notificationTemplates;
       
       const email = `${req.assure.toLowerCase().replace(/\s+/g, '.')}@defense.bf`;
@@ -196,8 +205,7 @@ export default function AdminDossiers() {
   // Delete handler
   const handleDeleteRequest = (id: string) => {
     if (confirm("Voulez-vous vraiment supprimer ce dossier d'enrôlement ?")) {
-      const updated = deleteRequest(id);
-      setRequests(updated);
+      deleteRequest(id).then(setRequests);
       if (selectedRequest?.id === id) {
         setSelectedRequest(null);
       }
@@ -207,7 +215,7 @@ export default function AdminDossiers() {
   // Auto-validation function using FIF guidelines
   const handleAutoValidation = () => {
     let count = 0;
-    const updatedRequests = requests.map(req => {
+    const updatedRequests = ((requests as any) || []).map(req => {
       if (req.statut !== 'En attente') return req;
 
       // Calculate age from date of birth
@@ -325,8 +333,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
   const handleDeleteDocument = (req: Request) => {
     if (confirm(`Êtes-vous sûr de vouloir supprimer la pièce justificative d'état civil pour ${req.membre}? Cette action est irréversible.`)) {
       const updatedReq = { ...req, justificatif: '', documentImage: '' };
-      const updated = editRequest(updatedReq);
-      setRequests(updated);
+      editRequest(updatedReq).then(setRequests);
       setSelectedRequest(null);
       alert("La pièce justificative a été supprimée avec succès.");
     }
@@ -347,7 +354,8 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
     let subject = `CAMA - Action requise : Pièce manquante pour l'enrôlement (#${missingPieceRequest.id})`;
     let content = `Cher militaire ${missingPieceRequest.assure},\n\nLors de l'examen de votre dossier d'enrôlement pour ${missingPieceRequest.membre} ${missingPieceRequest.prenoms || ''} (${missingPieceRequest.lien}), nos agents ont constaté qu'une pièce justificative est manquante ou non conforme.\n\nDocument requis : ${selectedMissingPiece}\n\nNote de l'agent : ${customMissingNote || 'Veuillez nous transmettre une copie lisible de cette pièce dans les plus brefs délais.'}\n\nVous pouvez téléverser ce justificatif en vous connectant sur votre Tableau de Bord CAMA.`;
 
-    const settings = getSiteSettings();
+    const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => { getSiteSettings().then(setSettings); }, []);
     const templates = settings.notificationTemplates;
     if (templates?.dossierRejected) {
       const reason = `Document requis: ${selectedMissingPiece}. Note: ${customMissingNote || 'Veuillez transmettre une copie lisible.'}`;
@@ -377,13 +385,12 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
 
   // Group requests by subscriber for a "Single Dossier" philosophy
   const groupedDossiers = useMemo(() => {
-    const users = getUsers();
     const groups: { [key: string]: { subscriber: string, matricule: string, numDossier?: string, requests: Request[] } } = {};
     
     filteredRequests.forEach(req => {
       const key = req.matricule;
       if (!groups[key]) {
-        const user = users.find(u => u.matricule === req.matricule);
+        const user = users?.find(u => u.matricule === req.matricule);
         groups[key] = {
           subscriber: req.assure,
           matricule: req.matricule,
@@ -395,7 +402,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
     });
     
     return Object.values(groups);
-  }, [filteredRequests]);
+  }, [filteredRequests, users]);
 
   const [expandedDossiers, setExpandedDossiers] = useState<Set<string>>(new Set());
 
@@ -554,8 +561,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
         ...newValues,
         modificationTraces: traces
       };
-      const updated = editRequest(updatedReq);
-      setRequests(updated);
+      editRequest(updatedReq).then(setRequests);
     } else {
       // Add mode
       const newReq = {
@@ -580,8 +586,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
         numCama: formNumCama,
         documentImage: formDocumentImage
       };
-      const updated = addRequest(newReq);
-      setRequests(updated);
+      addRequest(newReq).then(setRequests);
     }
 
     setIsFormModalOpen(false);
@@ -763,7 +768,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                     </tr>
 
                     {/* Member Rows */}
-                    {expandedDossiers.has(dossier.matricule) && dossier.requests.map((req) => (
+                    {expandedDossiers.has(dossier.matricule) && dossier.requests.map((req: any) => (
                       <tr key={req.id} className="hover:bg-[#008a4b]/5 transition-colors group">
                         <td className="px-6 py-4 whitespace-nowrap text-[10px] font-black text-gray-400 pl-14">#{req.id}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -1078,7 +1083,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                       <Download className="w-4 h-4" /> Imprimer Fiche
                     </button>
                     <button 
-                      onClick={() => {
+                      onClick={async (e) => {
                         setIsFIFModalOpen(false);
                         handleOpenEditModal(selectedRequest);
                       }}
@@ -1150,7 +1155,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                           </p>
                        </div>
                        <button 
-                         onClick={() => { setSelectedRequest(null); setIsMissingPieceModalOpen(true); setMissingPieceRequest(selectedRequest); }}
+                         onClick={async (e) => { setSelectedRequest(null); setIsMissingPieceModalOpen(true); setMissingPieceRequest(selectedRequest); }}
                          className="px-6 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl transition-all uppercase tracking-widest"
                        >
                           Signaler le document manquant
@@ -1163,7 +1168,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                    {(selectedRequest.statut === 'En attente' || selectedRequest.statut === 'Modif. à Valider') && (
                       <>
                          <button 
-                           onClick={() => {
+                           onClick={async (e) => {
                              handleValidate(selectedRequest.id, 'Rejeté');
                              setSelectedRequest(null);
                            }}
@@ -1172,7 +1177,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                             Rejeter Dossier
                          </button>
                          <button 
-                           onClick={() => {
+                           onClick={async (e) => {
                              handleValidate(selectedRequest.id, 'Validé');
                              setSelectedRequest(null);
                            }}

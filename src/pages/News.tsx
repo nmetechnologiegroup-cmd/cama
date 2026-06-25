@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+
+import { useMemo, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, Calendar, ChevronRight, Tag, BookOpen } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -7,7 +8,8 @@ import { useLanguage } from '../lib/LanguageContext';
 
 export default function News() {
   const { t } = useLanguage();
-  const articlesList = useMemo(() => getArticles(), []);
+  const [articlesList, setarticlesList] = useState<any[]>([]);
+  useEffect(() => { getArticles().then(setarticlesList); }, []);
   const publishedArticles = useMemo(() => articlesList.filter(a => a.status === 'Publié'), [articlesList]);
   
   // Return background/text category style

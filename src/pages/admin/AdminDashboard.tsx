@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useMemo } from 'react';
 import { Users, FileCheck, Building2, FileText, ArrowUpRight, Clock, CheckCircle2, AlertTriangle, TrendingUp, BarChart2 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -16,9 +17,12 @@ import {
 } from 'recharts';
 
 export default function AdminDashboard() {
-  const requests = useMemo(() => getRequests(), []);
-  const users = useMemo(() => getUsers(), []);
-  const centres = useMemo(() => getCentres(), []);
+  const [requests, setrequests] = useState<any[]>([]);
+  useEffect(() => { getRequests().then(setrequests); }, []);
+  const [users, setusers] = useState<any[]>([]);
+  useEffect(() => { getUsers().then(setusers); }, []);
+  const [centres, setcentres] = useState<any[]>([]);
+  useEffect(() => { getCentres().then(setcentres); }, []);
 
   // Compute dynamic stats dashboard values
   const totalAssures = 12450 + (users.length - 3); // base 12,450 to reflect high volume

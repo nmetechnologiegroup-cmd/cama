@@ -26,22 +26,25 @@ import {
   Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getSiteSettings, getArticles, safeStorage } from '../lib/dataStore';
+import { getSiteSettings, DEFAULT_SITE_SETTINGS, getArticles, safeStorage } from '../lib/dataStore';
 import { useLanguage } from '../lib/LanguageContext';
 
 export default function Home() {
   const { t } = useLanguage();
-  const [settings, setSettings] = useState(() => getSiteSettings());
-  const [showModal, setShowModal] = useState(() => {
-    const s = getSiteSettings();
-    if (!s.popupActive) return false;
-    const views = Number(safeStorage.getItem('cama_popup_views') || '0');
-    const maxViews = s.popupMaxViews !== undefined ? s.popupMaxViews : 2;
-    return views < maxViews;
-  });
+  const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  const [showModal, setShowModal] = useState(false);
+  useEffect(() => {
+    getSiteSettings().then(s => {
+      setSettings(s);
+      if (s.popupActive) {
+        const views = Number(safeStorage.getItem('cama_popup_views') || '0');
+        const maxViews = s.popupMaxViews !== undefined ? s.popupMaxViews : 2;
+        if (views < maxViews) setShowModal(true);
+      }
+    });
+  }, []);
 
   useEffect(() => {
-    // Increment popup count on mount if visible
     if (showModal) {
       const views = Number(safeStorage.getItem('cama_popup_views') || '0');
       safeStorage.setItem('cama_popup_views', String(views + 1));
@@ -49,11 +52,8 @@ export default function Home() {
   }, [showModal]);
 
   useEffect(() => {
-    // Synchroniser en temps réel les réglages du backoffice CAMA
-    setSettings(getSiteSettings());
-    
-    const handleSyncSettings = () => {
-      const freshSettings = getSiteSettings();
+    const handleSyncSettings = async () => {
+      const freshSettings = await getSiteSettings();
       setSettings(freshSettings);
       const views = Number(safeStorage.getItem('cama_popup_views') || '0');
       const maxViews = freshSettings.popupMaxViews !== undefined ? freshSettings.popupMaxViews : 2;
@@ -68,7 +68,8 @@ export default function Home() {
     };
   }, []);
 
-  const allArticles = useMemo(() => getArticles(), []);
+  const [allArticles, setArticles] = useState<any[]>([]);
+  useEffect(() => { getArticles().then(setArticles); }, []);
   const publishedArticles = useMemo(() => allArticles.filter(a => a.status === 'Publié'), [allArticles]);
 
   // Partners logos rendered professionally

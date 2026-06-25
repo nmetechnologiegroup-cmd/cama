@@ -1,10 +1,11 @@
-import { useState, useMemo, FormEvent } from 'react';
+import { useState, useMemo, FormEvent, useEffect } from 'react';
 import { Plus, MapPin, Search, X, Save, Edit, Trash, HelpCircle, Eye, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getCentres, addCentre, editCentre, deleteCentre, Centre } from '../../lib/dataStore';
 
 export default function AdminCentres() {
-  const [centres, setCentres] = useState<Centre[]>(() => getCentres());
+  const [centres, setCentres] = useState<Centre[]>([]);
+  useEffect(() => { getCentres().then(setCentres); }, []);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modal State
@@ -49,28 +50,25 @@ export default function AdminCentres() {
     if (!formNom) return;
 
     if (editingCentre) {
-      const updated = editCentre({
+      editCentre({
         id: editingCentre.id,
         nom: formNom,
         ville: formVille,
         type: formType
-      });
-      setCentres(updated);
+      }).then(setCentres);
     } else {
-      const updated = addCentre({
+      addCentre({
         nom: formNom,
         ville: formVille,
         type: formType
-      });
-      setCentres(updated);
+      }).then(setCentres);
     }
     setIsModalOpen(false);
   };
 
   // Handle remove center
   const handleRemove = (id: number) => {
-    const updated = deleteCentre(id);
-    setCentres(updated);
+    deleteCentre(id).then(setCentres);
   };
 
   return (

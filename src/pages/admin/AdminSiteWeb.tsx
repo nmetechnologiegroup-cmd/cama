@@ -40,7 +40,10 @@ export default function AdminSiteWeb() {
   const [activeTab, setActiveTab] = useState<'prestations' | 'motduDG' | 'services' | 'statistiques' | 'popup' | 'reseaux' | 'partenaires' | 'hero' | 'navigation' | 'footer' | 'about' | 'faq' | 'sections' | 'pages' | 'flash' | 'email' | 'notifications' | 'parametres'>('hero');
   
   // Load settings initially
-  const [settings, setSettings] = useState(() => getSiteSettings());
+  const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  React.useEffect(() => {
+    getSiteSettings().then(setSettings);
+  }, []);
   const [showToast, setShowToast] = useState(false);
 
   const popupFileRef = useRef<HTMLInputElement>(null);
@@ -884,7 +887,7 @@ export default function AdminSiteWeb() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     if (window.confirm('Voulez-vous réinitialiser le contenu À Propos aux valeurs par défaut ?')) {
                       setSettings(prev => ({ ...prev, aboutContent: DEFAULT_SITE_SETTINGS.aboutContent }));
                     }
@@ -1116,7 +1119,7 @@ export default function AdminSiteWeb() {
                         </select>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={async () => {
                             safeStorage.removeItem('cama_popup_views');
                             alert("Le compteur d'affichages a été réinitialisé pour votre navigateur local !");
                           }}
@@ -1760,7 +1763,7 @@ export default function AdminSiteWeb() {
                     <h4 className="font-extrabold text-gray-900 uppercase text-sm tracking-tight">Liste des messages</h4>
                   </div>
                   <button 
-                    onClick={() => {
+                    onClick={async () => {
                       const newList = [...(settings.flashInfos || []), "Nouveau message d'information..."];
                       handlePopupChange('flashInfos', newList);
                     }}
@@ -1789,7 +1792,7 @@ export default function AdminSiteWeb() {
                         />
                       </div>
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
                           const newList = (settings.flashInfos || []).filter((_, i) => i !== index);
                           handlePopupChange('flashInfos', newList);
                         }}
@@ -2195,7 +2198,7 @@ export default function AdminSiteWeb() {
 
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           const currentSections = settings.activeSections || {
                             prestations: true,
                             dgMessage: true,
@@ -2240,7 +2243,7 @@ export default function AdminSiteWeb() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const currentFaqs = settings.faqs || [];
                     const newId = String(currentFaqs.length > 0 ? Math.max(...currentFaqs.map(f => Number(f.id) || 0)) + 1 : 1);
                     const newFaq = { 
@@ -2308,7 +2311,7 @@ export default function AdminSiteWeb() {
                             <span className="text-xs font-bold text-gray-500">Visible</span>
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 const currentFaqs = settings.faqs || [];
                                 const updated = currentFaqs.map(f => f.id === faq.id ? { ...f, active: f.active === false ? true : false } : f);
                                 setSettings(prev => ({ ...prev, faqs: updated }));
@@ -2323,7 +2326,7 @@ export default function AdminSiteWeb() {
 
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={async () => {
                               const currentFaqs = settings.faqs || [];
                               const updated = currentFaqs.filter(f => f.id !== faq.id);
                               setSettings(prev => ({ ...prev, faqs: updated }));
@@ -2348,7 +2351,7 @@ export default function AdminSiteWeb() {
                  <h3 className="text-lg font-bold text-gray-900">Bas de page (Footer)</h3>
                  <div className="flex gap-2">
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         const updated = [...(settings.footer?.liensRapides || [])];
                         updated.push({ label: 'Nouveau lien', url: '#' });
                         setSettings(prev => ({ ...prev, footer: { ...prev.footer!, liensRapides: updated } }));
@@ -2358,7 +2361,7 @@ export default function AdminSiteWeb() {
                        <Plus className="w-3 h-3 mr-1" /> Lien Rapide
                     </button>
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         const updated = [...(settings.footer?.espaceNumerique || [])];
                         updated.push({ label: 'Nouveau lien', url: '#' });
                         setSettings(prev => ({ ...prev, footer: { ...prev.footer!, espaceNumerique: updated } }));
@@ -2433,7 +2436,7 @@ export default function AdminSiteWeb() {
                       {settings.footer?.liensRapides?.map((lien, idx) => (
                         <div key={idx} className="flex gap-2 relative group">
                           <button 
-                            onClick={() => {
+                            onClick={async () => {
                               const updated = [...(settings.footer?.liensRapides || [])];
                               updated.splice(idx, 1);
                               updateFooter('liensRapides', updated);
@@ -2476,7 +2479,7 @@ export default function AdminSiteWeb() {
                       {settings.footer?.espaceNumerique?.map((lien, idx) => (
                         <div key={idx} className="flex gap-2 relative group">
                           <button 
-                            onClick={() => {
+                            onClick={async () => {
                               const updated = [...(settings.footer?.espaceNumerique || [])];
                               updated.splice(idx, 1);
                               updateFooter('espaceNumerique', updated);

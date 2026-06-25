@@ -121,32 +121,24 @@ Les fichiers statiques du site web sont maintenant générés de manière optima
 
 ## ⚙️ Étape 5 : Configuration du Serveur Backend de la base de données
 
-Allez dans le dossier `/var/www/cama/database_setup` pour préparer le serveur API d'arrière-plan.
+Allez dans le dossier racine de l'application `/var/www/cama` pour préparer le serveur API d'arrière-plan.
 
 ### 1. Installation des dépendances et pilotes :
+Les dépendances (`mysql2`, `better-sqlite3`, etc.) sont déjà gérées par le fichier `package.json` principal. Vous pouvez vous assurer que tout est installé :
 ```bash
-cd /var/www/cama/database_setup
-npm install express cors dotenv
+cd /var/www/cama
+npm install
 ```
-
-* **Si vous utilisez SQLite :**
-  ```bash
-  npm install sqlite3
-  ```
-* **Si vous utilisez MariaDB/MySQL :**
-  ```bash
-  npm install mysql2
-  ```
 
 ### 2. Création et alimentation de la base de données :
 
 * **Pour SQLite (Option A) :**
   ```bash
-  sqlite3 cama.db < sqlite_setup.sql
+  sqlite3 cama.db < database_setup/sqlite_setup.sql
   ```
 * **Pour MariaDB (Option B) :**
   ```bash
-  mysql -u cama_user -p cama_db < mariadb_setup.sql
+  mysql -u cama_user -p cama_db < database_setup/mariadb_setup.sql
   ```
 
 ### 3. Création du fichier de variables d'environnement (`.env`) :
@@ -157,15 +149,15 @@ nano .env
 
 **Pour SQLite :**
 ```env
-PORT=5000
+PORT=3000
 NODE_ENV=production
 DB_TYPE=sqlite
-SQLITE_DB_PATH=/var/www/cama/database_setup/cama.db
+SQLITE_DB_PATH=/var/www/cama/cama.db
 ```
 
 **Pour MariaDB :**
 ```env
-PORT=5000
+PORT=3000
 NODE_ENV=production
 DB_TYPE=mariadb
 DB_HOST=localhost
@@ -182,8 +174,8 @@ DB_NAME=cama_db
 Nous allons confier la gestion du serveur backend Node.js à **PM2** pour garantir qu'il s'exécute de façon autonome et redémarre au boot de Debian :
 
 ```bash
-# Lancement de l'API
-pm2 start local_server.js --name "cama-backend"
+# Lancement de l'API (à partir du build de production)
+pm2 start dist/server.cjs --name "cama-backend"
 
 # Sauvegarde de la configuration actuelle de PM2
 pm2 save
@@ -227,7 +219,7 @@ server {
 
     # 2. Proxy d'acheminement des requêtes API vers le serveur Backend Node.js
     location /api {
-        proxy_pass http://127.0.0.1:5000;
+        proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';

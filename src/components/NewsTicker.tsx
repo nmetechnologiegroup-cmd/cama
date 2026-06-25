@@ -1,9 +1,11 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Megaphone } from 'lucide-react';
-import { getSiteSettings } from '../lib/dataStore';
+import { getSiteSettings, DEFAULT_SITE_SETTINGS } from '../lib/dataStore';
 
 export default function NewsTicker() {
-  const settings = getSiteSettings();
+  const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => { getSiteSettings().then(setSettings); }, []);
   const news = settings.flashInfos || [];
 
   if (news.length === 0 || settings.showFlashInfos === false) return null;

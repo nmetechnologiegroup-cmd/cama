@@ -1,11 +1,12 @@
-import React, { useState, useMemo, FormEvent, useRef } from 'react';
+import React, { useState, useMemo, FormEvent, useRef, useEffect } from 'react';
 import { Plus, Edit3, Trash2, Calendar, Eye, X, Save, Sparkles, BookOpen, Upload, Trash, Check, FileUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { getArticles, addArticle, editArticle, deleteArticle, Article } from '../../lib/dataStore';
 import { compressImage } from '../../lib/utils';
 
 export default function AdminNews() {
-  const [articles, setArticles] = useState<Article[]>(() => getArticles());
+  const [articles, setArticles] = useState<Article[]>([]);
+  useEffect(() => { getArticles().then(setArticles); }, []);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -116,7 +117,7 @@ export default function AdminNews() {
       }
 
       if (editingArticle) {
-        const updated = editArticle({
+        editArticle({
           id: editingArticle.id,
           title: formTitle,
           author: formAuthor,
@@ -125,18 +126,16 @@ export default function AdminNews() {
           status: formStatus,
           image: finalImage,
           date: editingArticle.date
-        });
-        setArticles(updated);
+        }).then(setArticles);
       } else {
-        const updated = addArticle({
+        addArticle({
           title: formTitle,
           author: formAuthor,
           category: formCategory,
           content: formContent,
           status: formStatus,
           image: finalImage
-        });
-        setArticles(updated);
+        }).then(setArticles);
       }
       setIsModalOpen(false);
     } catch (error) {
@@ -148,8 +147,7 @@ export default function AdminNews() {
   };
 
   const handleDelete = (id: number) => {
-    const updated = deleteArticle(id);
-    setArticles(updated);
+    deleteArticle(id).then(setArticles);
   };
 
   return (

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { 
@@ -19,7 +19,8 @@ export default function NewsDetail() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   
-  const articles = useMemo(() => getArticles(), []);
+  const [articles, setarticles] = useState<any[]>([]);
+  useEffect(() => { getArticles().then(setarticles); }, []);
   const article = useMemo(() => articles.find(a => a.id === Number(id)), [articles, id]);
 
   const categoryStyle = (category: string) => {

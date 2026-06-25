@@ -259,7 +259,7 @@ export default function MainLayout() {
 
             {/* Chat Input Bar */}
             <form 
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 handleSendMessage(chatInput);
               }}

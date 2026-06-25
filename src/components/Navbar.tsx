@@ -4,17 +4,18 @@ import { useState, useEffect } from 'react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../lib/LanguageContext';
-import { getSiteSettings, SiteWebSettings } from '../lib/dataStore';
+import { getSiteSettings, SiteWebSettings, DEFAULT_SITE_SETTINGS } from '../lib/dataStore';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const { t } = useLanguage();
-  const [settings, setSettings] = useState<SiteWebSettings>(getSiteSettings());
+  const [settings, setSettings] = useState<SiteWebSettings>(DEFAULT_SITE_SETTINGS);
 
   useEffect(() => {
     // Refresh settings occasionally or on mount
-    const handleSync = () => setSettings(getSiteSettings());
+    getSiteSettings().then(setSettings);
+    const handleSync = () => getSiteSettings().then(setSettings);
     window.addEventListener('storage', handleSync);
     window.addEventListener('cama_settings_updated', handleSync);
     return () => {

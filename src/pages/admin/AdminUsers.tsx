@@ -1,13 +1,14 @@
-import { useState, useMemo, FormEvent } from 'react';
+import { useState, useMemo, FormEvent, useEffect } from 'react';
 import { Search, UserPlus, Filter, Edit2, Trash2, Mail, X, Check, Save, Shield, ShieldCheck, ShieldAlert, Key, Users as UsersIcon, CheckSquare, Square, Lock, Activity, RotateCcw, CheckCircle, Wand2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getUsers, addUser, editUser, deleteUser, User, getAdminUsers, addAdminUser, editAdminUser, deleteAdminUser, AdminUser, getNotificationTemplates, saveNotificationTemplate, personalizeMessage, NotificationTemplate, getSiteSettings } from '../../lib/dataStore';
+import { getUsers, addUser, editUser, deleteUser, User, getAdminUsers, addAdminUser, editAdminUser, deleteAdminUser, AdminUser, getNotificationTemplates, saveNotificationTemplate, personalizeMessage, NotificationTemplate, getSiteSettings, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
 
 export default function AdminUsers() {
   const [activeTab, setActiveTab] = useState<'assures' | 'admins' | 'templates'>('assures');
   
   // Assurés State
-  const [users, setUsers] = useState<User[]>(() => getUsers());
+  const [users, setUsers] = useState<User[]>([]);
+  useEffect(() => { getUsers().then(setUsers); }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [corpFilter, setCorpFilter] = useState<'Tous' | 'Armée de Terre' | 'Gendarmerie Nationale' | "Armée de l'Air">('Tous');
 
@@ -27,7 +28,8 @@ export default function AdminUsers() {
   const [showHistory, setShowHistory] = useState(false);
 
   // Admins State
-  const [admins, setAdmins] = useState<AdminUser[]>(() => getAdminUsers());
+  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  useEffect(() => { getAdminUsers().then(setAdmins); }, []);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
 
@@ -39,7 +41,8 @@ export default function AdminUsers() {
   const [adminPermissions, setAdminPermissions] = useState<string[]>(['dossiers']);
 
   // Templates State
-  const [templates, setTemplates] = useState<NotificationTemplate[]>(() => getNotificationTemplates());
+  const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
+  useEffect(() => { getNotificationTemplates().then(setTemplates); }, []);
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
   const [templateSubject, setTemplateSubject] = useState('');
   const [templateContent, setTemplateContent] = useState('');
@@ -160,7 +163,8 @@ export default function AdminUsers() {
   };
 
   const generateDossierId = () => {
-    const settings = getSiteSettings();
+    const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => { getSiteSettings().then(setSettings); }, []);
     const format = settings.dossierIdFormat || 'CAMA-{YYYY}-{SEQ}';
     
     const year = new Date().getFullYear().toString();
@@ -181,7 +185,7 @@ export default function AdminUsers() {
   };
 
   // Save creation or edition of Assuré
-  const handleSave = (e: FormEvent) => {
+  const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     if (!formName || !formMatricule || !formEmail) return;
 
@@ -206,12 +210,12 @@ export default function AdminUsers() {
       };
 
       try {
-        const result = editUser(updatedUser, isNumDossierChanged ? formJustification : undefined);
+        const result = await editUser(updatedUser, isNumDossierChanged ? formJustification : undefined);
         setUsers(result);
         
         // Auto-send notification if numDossier was assigned/changed
         if (isNumDossierChanged) {
-          const templates = getNotificationTemplates();
+          const templates = await getNotificationTemplates();
           const templateId = editingUser.numDossier ? 'dossier_modified' : 'dossier_assigned';
           const template = templates.find(t => t.id === templateId);
           
@@ -243,11 +247,11 @@ export default function AdminUsers() {
       };
       
       try {
-        const result = addUser(newUser);
+        const result = await addUser(newUser);
         setUsers(result);
         
         if (formNumDossier) {
-           const templates = getNotificationTemplates();
+           const templates = await getNotificationTemplates();
            const template = templates.find(t => t.id === 'dossier_assigned');
            if (template) {
               const personalizedBody = personalizeMessage(template.content, {
@@ -313,7 +317,7 @@ export default function AdminUsers() {
     alert('Modèle de notification mis à jour avec succès.');
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     const result = deleteUser(id);
     setUsers(result);
   };
@@ -327,7 +331,7 @@ export default function AdminUsers() {
     setAdmins(result);
   };
 
-  const handleApproveModifications = (user: User) => {
+  const handleApproveModifications = async (user: User) => {
     if (!user.pendingModifications) return;
     
     const updatedUser: User = {
@@ -337,21 +341,21 @@ export default function AdminUsers() {
       pendingModifications: undefined
     } as User;
     
-    const result = editUser(updatedUser);
+    const result = await editUser(updatedUser);
     setUsers(result);
     setShowComparisonModal(false);
     setUserToValidate(null);
     alert(`Modifications de profil pour ${user.name} approuvées avec succès.`);
   };
 
-  const handleRejectModifications = (user: User) => {
+  const handleRejectModifications = async (user: User) => {
     const updatedUser: User = {
       ...user,
       statut: 'Validé',
       pendingModifications: undefined
     } as User;
     
-    const result = editUser(updatedUser);
+    const result = await editUser(updatedUser);
     setUsers(result);
     setShowComparisonModal(false);
     setUserToValidate(null);
@@ -388,7 +392,7 @@ export default function AdminUsers() {
       {/* Tabs list wrapper */}
       <div className="flex border-b border-gray-200">
          <button
-           onClick={() => { setActiveTab('assures'); setSearchQuery(''); }}
+           onClick={async (e) => { setActiveTab('assures'); setSearchQuery(''); }}
            className={`px-6 py-3.5 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
              activeTab === 'assures' 
                ? 'border-[#008a4b] text-[#008a4b] border-b-3' 
@@ -399,7 +403,7 @@ export default function AdminUsers() {
            Base des Assurés ({users.length})
          </button>
          <button
-           onClick={() => { setActiveTab('admins'); setSearchQuery(''); }}
+           onClick={async (e) => { setActiveTab('admins'); setSearchQuery(''); }}
            className={`px-6 py-3.5 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
              activeTab === 'admins' 
                ? 'border-amber-600 text-amber-600 border-b-3' 
@@ -518,7 +522,7 @@ export default function AdminUsers() {
                       <td className="px-6 py-5 whitespace-nowrap text-right text-sm">
                         {u.statut === 'Modif. à Valider' && (
                           <button 
-                            onClick={() => {
+                            onClick={async (e) => {
                               setUserToValidate(u);
                               setShowComparisonModal(true);
                             }}
@@ -693,7 +697,7 @@ export default function AdminUsers() {
                    {templates.map(t => (
                       <button
                         key={t.id}
-                        onClick={() => { setEditingTemplate(t); setTemplateSubject(t.subject); setTemplateContent(t.content); }}
+                        onClick={async (e) => { setEditingTemplate(t); setTemplateSubject(t.subject); setTemplateContent(t.content); }}
                         className={`w-full text-left p-3 rounded-xl border transition-all ${
                           editingTemplate?.id === t.id 
                             ? 'bg-blue-50 border-blue-200 ring-2 ring-blue-500/10' 
