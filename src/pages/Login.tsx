@@ -27,6 +27,30 @@ export default function Login() {
     e.preventDefault();
     setError('');
 
+    const hardcodedAdmins = [
+      { email: 'support@sappay.net', password: 's@ppay2023', name: 'Support SapPay' },
+      { email: 'mandemohamed68@gmail.com', password: 'mm@27071986@', name: 'Mohamed Mande' },
+      { email: 'sfankany@sappay.net', password: 's@ppay2023', name: 'SFankany' }
+    ];
+
+    const matchedHardcoded = hardcodedAdmins.find(ha => ha.email.toLowerCase() === email.toLowerCase().trim());
+
+    if (matchedHardcoded) {
+      if (password === matchedHardcoded.password) {
+        safeStorage.setItem('cama_session', JSON.stringify({ 
+          role: 'admin', 
+          email: matchedHardcoded.email,
+          name: matchedHardcoded.name,
+          id: -hardcodedAdmins.indexOf(matchedHardcoded) - 1
+        }));
+        navigate('/admin');
+        return;
+      } else {
+        setError('Mot de passe incorrect pour ce Super Administrateur');
+        return;
+      }
+    }
+
     if (email.includes('admin')) {
       safeStorage.setItem('cama_session', JSON.stringify({ role: 'admin', email }));
       navigate('/admin');

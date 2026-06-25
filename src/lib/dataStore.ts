@@ -214,6 +214,9 @@ export interface SiteWebSettings {
   rgpdContent?: string;
   flashInfos?: string[];
   showFlashInfos?: boolean;
+  chatAdvisorActive?: boolean;
+  chatStartHour?: string;
+  chatEndHour?: string;
   emailSettings?: {
     smtpHost: string;
     smtpPort: string;
@@ -321,6 +324,9 @@ export const DEFAULT_SITE_SETTINGS: SiteWebSettings = {
   rgpdContent: "Conformément aux réglementations nationales et internationales en vigueur concernant la protection des données personnelles, la Caisse d'Assurance Maladie des Armées (CAMA) s'engage à assurer la confidentialité, la sécurité et l'intégrité de toutes les données collectées sur ses plateformes.\n\nLes données d’enrôlement de vos membres de famille, vos informations médicales et vos pièces justificatives sont exclusivement traitées pour la gestion de vos droits d’assurance maladie et la validation de vos prises en charge. Vos données ne sont en aucun cas cédées, vendues ou partagées avec des tiers non autorisés. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données personnelles sur simple demande adressée à notre Délégué à la Protection des Données (DPO).",
   flashInfos: [],
   showFlashInfos: true,
+  chatAdvisorActive: false,
+  chatStartHour: "08:00",
+  chatEndHour: "17:00",
   emailSettings: {
     smtpHost: "smtp.cama.bf",
     smtpPort: "587",
@@ -477,12 +483,30 @@ export async function deleteArticle(id: number): Promise<Article[]> {
   return getArticles();
 }
 
-export async function getSiteSettings(): Promise<SiteWebSettings> {
-  return fetchAPI('/site-settings');
+let cachedSiteSettings: SiteWebSettings | null = null;
+let inFlightSiteSettingsPromise: Promise<SiteWebSettings> | null = null;
+
+export async function getSiteSettings(forceRefresh = false): Promise<SiteWebSettings> {
+  if (cachedSiteSettings && !forceRefresh) {
+    return cachedSiteSettings;
+  }
+  if (inFlightSiteSettingsPromise && !forceRefresh) {
+    return inFlightSiteSettingsPromise;
+  }
+  inFlightSiteSettingsPromise = fetchAPI('/site-settings').then(settings => {
+    cachedSiteSettings = settings;
+    inFlightSiteSettingsPromise = null;
+    return settings;
+  }).catch(err => {
+    inFlightSiteSettingsPromise = null;
+    throw err;
+  });
+  return inFlightSiteSettingsPromise;
 }
 
 export async function saveSiteSettings(settings: SiteWebSettings): Promise<void> {
   await fetchAPI('/site-settings', { method: 'PUT', body: JSON.stringify(settings) });
+  cachedSiteSettings = settings;
 }
 
 export async function getLogs(userId?: number): Promise<ActionLog[]> {
@@ -540,4 +564,59 @@ export function personalizeMessage(content: string, variables: Record<string, st
     personalized = personalized.replace(new RegExp(key, 'g'), value);
   });
   return personalized;
+}
+
+// ==========================================
+// CLIENT CHAT / DISCUSSIONS API
+// ==========================================
+
+export interface ChatDiscussion {
+  id: number;
+  session_id: string;
+  user_email?: string;
+  user_name?: string;
+  started_at: string;
+  status: 'active' | 'closed';
+  lastMessage?: ChatMessageRecord | null;
+}
+
+export interface ChatMessageRecord {
+  id: number;
+  discussion_id: number;
+  sender: 'user' | 'bot' | 'advisor' | 'admin';
+  text: string;
+  created_at: string;
+}
+
+export async function getOrCreateDiscussion(sessionId: string, userEmail?: string, userName?: string): Promise<{ discussion: ChatDiscussion, messages: ChatMessageRecord[] }> {
+  return fetchAPI('/chat/discussions', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, userEmail, userName })
+  });
+}
+
+export async function getDiscussionMessages(discussionId: number): Promise<ChatMessageRecord[]> {
+  return fetchAPI(`/chat/discussions/${discussionId}/messages`);
+}
+
+export async function sendChatMessage(discussionId: number, sender: string, text: string): Promise<ChatMessageRecord> {
+  return fetchAPI(`/chat/discussions/${discussionId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ sender, text })
+  });
+}
+
+export async function getAdminDiscussions(): Promise<ChatDiscussion[]> {
+  return fetchAPI('/chat/discussions');
+}
+
+export async function updateDiscussionStatus(discussionId: number, status: 'active' | 'closed'): Promise<void> {
+  await fetchAPI(`/chat/discussions/${discussionId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status })
+  });
+}
+
+export async function deleteDiscussion(discussionId: number): Promise<void> {
+  await fetchAPI(`/chat/discussions/${discussionId}`, { method: 'DELETE' });
 }

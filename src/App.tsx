@@ -28,6 +28,7 @@ import AdminCentres from './pages/admin/AdminCentres';
 import AdminNews from './pages/admin/AdminNews';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminSiteWeb from './pages/admin/AdminSiteWeb';
+import AdminChat from './pages/admin/AdminChat';
 
 export default function App() {
   return (
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="site" element={<AdminSiteWeb />} />
+              <Route path="chat" element={<AdminChat />} />
               <Route path="dossiers" element={<AdminDossiers />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="centres" element={<AdminCentres />} />

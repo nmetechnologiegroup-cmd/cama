@@ -113,30 +113,30 @@ CREATE TABLE site_settings (
     id INT PRIMARY KEY,
     popup_title VARCHAR(255),
     popup_subtitle VARCHAR(255),
-    popup_content TEXT,
+    popup_content LONGTEXT,
     popup_active TINYINT(1) DEFAULT 1,
     popup_image LONGTEXT,
     popup_max_views INT DEFAULT 2,
     hero_bg_watermark_opacity INT DEFAULT 25,
-    prestations TEXT, -- JSON array
+    prestations LONGTEXT, -- JSON array
     dg_name VARCHAR(255),
-    dg_message TEXT,
+    dg_message LONGTEXT,
     dg_citation VARCHAR(255),
     dg_image LONGTEXT,
-    about_content TEXT, -- JSON object
-    statistics TEXT, -- JSON array
+    about_content LONGTEXT, -- JSON object
+    statistics LONGTEXT, -- JSON array
     facebook_page_url VARCHAR(255),
-    quality_citation TEXT,
+    quality_citation LONGTEXT,
     quality_author VARCHAR(255),
-    testimonials TEXT, -- JSON array
-    partners TEXT, -- JSON array
+    testimonials LONGTEXT, -- JSON array
+    partners LONGTEXT, -- JSON array
     hero_image LONGTEXT,
     hero_title VARCHAR(255),
-    hero_subtitle TEXT,
-    menu_visibility TEXT, -- JSON object
-    section_titles TEXT, -- JSON object
-    footer TEXT, -- JSON object
-    faqs TEXT -- JSON array
+    hero_subtitle LONGTEXT,
+    menu_visibility LONGTEXT, -- JSON object
+    section_titles LONGTEXT, -- JSON object
+    footer LONGTEXT, -- JSON object
+    faqs LONGTEXT -- JSON array
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 7. Table des JOURNAUX D'ACTIONS (Action Logs)

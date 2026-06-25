@@ -535,6 +535,58 @@ export default function AdminSiteWeb() {
                      Aperçu : <strong className="text-[#008a4b]">{(settings.dossierIdFormat || 'CAMA-{YYYY}-{SEQ}').replace('{YYYY}', new Date().getFullYear().toString()).replace('{SEQ}', '0001')}</strong>
                   </div>
                 </div>
+
+                <div className="bg-white p-5 rounded-xl border border-gray-200">
+                  <h4 className="font-bold text-gray-900 mb-4 flex items-center">
+                    <MessageSquare className="w-5 h-5 mr-2 text-[#008a4b]" /> Messagerie Directe (Conseiller)
+                  </h4>
+                  <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                    Activez la discussion en direct avec un conseiller et paramétrez ses heures de disponibilité. En dehors de ces heures ou si désactivé, le chat repassera en mode robot/FAQ intelligent.
+                  </p>
+                  
+                  <div className="space-y-4">
+                    {/* Toggle Switch */}
+                    <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                      <div>
+                        <span className="text-xs font-bold text-gray-900 block">Discussion avec conseiller</span>
+                        <span className="text-[10px] text-gray-500">Activer le support humain direct</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={settings.chatAdvisorActive || false}
+                          onChange={(e) => handlePopupChange('chatAdvisorActive', e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#008a4b]"></div>
+                      </label>
+                    </div>
+
+                    {/* Hours Settings */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Heure de début</label>
+                        <input
+                          type="text"
+                          value={settings.chatStartHour || '08:00'}
+                          onChange={(e) => handlePopupChange('chatStartHour', e.target.value)}
+                          placeholder="Ex: 08:00"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-[#008a4b]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Heure de fin</label>
+                        <input
+                          type="text"
+                          value={settings.chatEndHour || '17:00'}
+                          onChange={(e) => handlePopupChange('chatEndHour', e.target.value)}
+                          placeholder="Ex: 17:00"
+                          className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold text-gray-900 outline-none focus:ring-2 focus:ring-[#008a4b]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}

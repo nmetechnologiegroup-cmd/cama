@@ -117,6 +117,54 @@ async function startServer() {
       console.log('Base de données initialisée avec', scriptName);
     }
     
+    // Create chat tables if they don't exist
+    try {
+      if (mysqlPool) {
+        await mysqlPool.query(`
+          CREATE TABLE IF NOT EXISTS chat_discussions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            session_id VARCHAR(100) NOT NULL,
+            user_email VARCHAR(255),
+            user_name VARCHAR(255),
+            started_at VARCHAR(100),
+            status VARCHAR(50) DEFAULT 'active'
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+        await mysqlPool.query(`
+          CREATE TABLE IF NOT EXISTS chat_messages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            discussion_id INT NOT NULL,
+            sender VARCHAR(50) NOT NULL,
+            text LONGTEXT NOT NULL,
+            created_at VARCHAR(100) NOT NULL
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        `);
+      } else {
+        sqliteDb.prepare(`
+          CREATE TABLE IF NOT EXISTS chat_discussions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            user_email TEXT,
+            user_name TEXT,
+            started_at TEXT,
+            status TEXT DEFAULT 'active'
+          )
+        `).run();
+        sqliteDb.prepare(`
+          CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            discussion_id INTEGER NOT NULL,
+            sender TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL
+          )
+        `).run();
+      }
+      console.log('Tables de discussion chat vérifiées / créées.');
+    } catch (chatDbErr: any) {
+      console.error('Erreur lors de la création des tables de chat:', chatDbErr.message);
+    }
+    
     // Ensure logo and site title columns exist in site_settings table
     const alterColumns = async () => {
       const cols = [
@@ -125,7 +173,12 @@ async function startServer() {
         { name: 'site_title', type: 'VARCHAR(255)' },
         { name: 'site_slogan', type: 'VARCHAR(255)' },
         { name: 'vision_content', type: mysqlPool ? 'LONGTEXT' : 'TEXT' },
-        { name: 'rgpd_content', type: mysqlPool ? 'LONGTEXT' : 'TEXT' }
+        { name: 'rgpd_content', type: mysqlPool ? 'LONGTEXT' : 'TEXT' },
+        { name: 'flash_infos', type: mysqlPool ? 'LONGTEXT' : 'TEXT' },
+        { name: 'show_flash_infos', type: 'INT' },
+        { name: 'chat_advisor_active', type: 'INT' },
+        { name: 'chat_start_hour', type: 'VARCHAR(10)' },
+        { name: 'chat_end_hour', type: 'VARCHAR(10)' }
       ];
       
       for (const col of cols) {
@@ -152,6 +205,23 @@ async function startServer() {
           }
         } catch (e: any) {
           console.error(`Error altering table for column ${col.name}:`, e.message);
+        }
+      }
+
+      // Convert existing columns to LONGTEXT for MariaDB to handle large base64 strings
+      if (mysqlPool) {
+        const columnsToLongText = [
+          'popup_content', 'prestations', 'dg_message', 'about_content', 'statistics',
+          'quality_citation', 'testimonials', 'partners', 'hero_subtitle',
+          'menu_visibility', 'section_titles', 'footer', 'faqs'
+        ];
+        for (const colName of columnsToLongText) {
+          try {
+            await mysqlPool.execute(`ALTER TABLE site_settings MODIFY COLUMN ${colName} LONGTEXT`);
+            console.log(`Successfully converted site_settings column ${colName} to LONGTEXT in MariaDB`);
+          } catch (err: any) {
+            console.error(`Error converting column ${colName} to LONGTEXT:`, err.message);
+          }
         }
       }
     };
@@ -548,7 +618,12 @@ async function startServer() {
         siteTitle: row.site_title || "CAMA",
         siteSlogan: row.site_slogan || "CAISSE D'ASSURANCE MALADIE DES ARMÉES",
         visionContent: row.vision_content || "Notre vision est de devenir un modèle d’excellence en matière de protection sociale et d’assurance maladie militaire en Afrique de l'Ouest. Nous nous engageons à offrir une couverture sanitaire universelle, solidaire et équitable à l'ensemble des forces armées nationales, de leurs familles et des retraités militaires.\n\nÀ travers la modernisation constante de nos infrastructures, la digitalisation de nos processus de traitement des dossiers et des partenariats solides avec un réseau étendu de centres de soins de qualité, nous veillons à ce que chaque héros de notre nation et ses ayants droit bénéficient d'une prise en charge médicale rapide, humaine et efficace, partout sur le territoire.",
-        rgpdContent: row.rgpd_content || "Conformément aux réglementations nationales et internationales en vigueur concernant la protection des données personnelles, la Caisse d'Assurance Maladie des Armées (CAMA) s'engage à assurer la confidentialité, la sécurité et l'intégrité de toutes les données collectées sur ses plateformes.\n\nLes données d’enrôlement de vos membres de famille, vos informations médicales et vos pièces justificatives sont exclusivement traitées pour la gestion de vos droits d’assurance maladie et la validation de vos prises en charge. Vos données ne sont en aucun cas cédées, vendues ou partagées avec des tiers non autorisés. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données personnelles sur simple demande adressée à notre Délégué à la Protection des Données (DPO)."
+        rgpdContent: row.rgpd_content || "Conformément aux réglementations nationales et internationales en vigueur concernant la protection des données personnelles, la Caisse d'Assurance Maladie des Armées (CAMA) s'engage à assurer la confidentialité, la sécurité et l'intégrité de toutes les données collectées sur ses plateformes.\n\nLes données d’enrôlement de vos membres de famille, vos informations médicales et vos pièces justificatives sont exclusivement traitées pour la gestion de vos droits d’assurance maladie et la validation de vos prises en charge. Vos données ne sont en aucun cas cédées, vendues ou partagées avec des tiers non autorisés. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données personnelles sur simple demande adressée à notre Délégué à la Protection des Données (DPO).",
+        flashInfos: safeParse(row.flash_infos, []),
+        showFlashInfos: (row.show_flash_infos !== undefined && row.show_flash_infos !== null) ? Boolean(row.show_flash_infos) : true,
+        chatAdvisorActive: (row.chat_advisor_active !== undefined && row.chat_advisor_active !== null) ? Boolean(row.chat_advisor_active) : false,
+        chatStartHour: row.chat_start_hour || "08:00",
+        chatEndHour: row.chat_end_hour || "17:00"
       };
       res.json(settings);
     } catch (error: any) {
@@ -569,7 +644,8 @@ async function startServer() {
             about_content = ?, statistics = ?, facebook_page_url = ?, quality_citation = ?, quality_author = ?, 
             testimonials = ?, partners = ?, hero_image = ?, hero_title = ?, hero_subtitle = ?, menu_visibility = ?, 
             section_titles = ?, footer = ?, faqs = ?, logo_url = ?, logo_width = ?, site_title = ?, site_slogan = ?,
-            vision_content = ?, rgpd_content = ?
+            vision_content = ?, rgpd_content = ?, flash_infos = ?, show_flash_infos = ?,
+            chat_advisor_active = ?, chat_start_hour = ?, chat_end_hour = ?
           WHERE id = ?
         `;
         const params = [
@@ -580,6 +656,8 @@ async function startServer() {
           JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
           JSON.stringify(s.faqs || []), s.logoUrl, s.logoWidth, s.siteTitle, s.siteSlogan,
           s.visionContent, s.rgpdContent,
+          JSON.stringify(s.flashInfos || []), s.showFlashInfos ? 1 : 0,
+          s.chatAdvisorActive ? 1 : 0, s.chatStartHour || "08:00", s.chatEndHour || "17:00",
           row.id
         ];
         await dbRun(sql, params);
@@ -591,8 +669,9 @@ async function startServer() {
             about_content, statistics, facebook_page_url, quality_citation, quality_author, 
             testimonials, partners, hero_image, hero_title, hero_subtitle, menu_visibility, 
             section_titles, footer, faqs, logo_url, logo_width, site_title, site_slogan,
-            vision_content, rgpd_content
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            vision_content, rgpd_content, flash_infos, show_flash_infos,
+            chat_advisor_active, chat_start_hour, chat_end_hour
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const params = [
           1, s.popupTitle, s.popupSubtitle, s.popupContent, s.popupActive ? 1 : 0, s.popupImage, s.popupMaxViews,
@@ -601,7 +680,9 @@ async function startServer() {
           JSON.stringify(s.testimonials || []), JSON.stringify(s.partners || []), s.heroImage, s.heroTitle, s.heroSubtitle,
           JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
           JSON.stringify(s.faqs || []), s.logoUrl, s.logoWidth, s.siteTitle, s.siteSlogan,
-          s.visionContent, s.rgpdContent
+          s.visionContent, s.rgpdContent,
+          JSON.stringify(s.flashInfos || []), s.showFlashInfos ? 1 : 0,
+          s.chatAdvisorActive ? 1 : 0, s.chatStartHour || "08:00", s.chatEndHour || "17:00"
         ];
         await dbRun(sql, params);
       }
@@ -636,6 +717,139 @@ async function startServer() {
     }
   });
 
+  // ==========================================
+  // DISCUSSIONS / CHAT API
+  // ==========================================
+
+  // Get or create discussion for user
+  app.post('/api/chat/discussions', async (req, res) => {
+    const { sessionId, userEmail, userName } = req.body;
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId est requis" });
+    }
+    try {
+      // Check if active discussion exists
+      let disc = await dbGet("SELECT * FROM chat_discussions WHERE session_id = ? AND status = 'active' LIMIT 1", [sessionId]);
+      if (!disc) {
+        const result = await dbRun(
+          "INSERT INTO chat_discussions (session_id, user_email, user_name, started_at, status) VALUES (?, ?, ?, ?, 'active')",
+          [sessionId, userEmail || null, userName || 'Visiteur Anonyme', new Date().toISOString()]
+        );
+        const newId = mysqlPool ? (result as any).insertId : result;
+        disc = await dbGet("SELECT * FROM chat_discussions WHERE id = ?", [newId]);
+      }
+      
+      // Also fetch messages
+      const messages = await dbAll("SELECT * FROM chat_messages WHERE discussion_id = ? ORDER BY id ASC", [disc.id]);
+      res.json({ discussion: disc, messages });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Get messages for a discussion
+  app.get('/api/chat/discussions/:id/messages', async (req, res) => {
+    try {
+      const messages = await dbAll("SELECT * FROM chat_messages WHERE discussion_id = ? ORDER BY id ASC", [req.params.id]);
+      res.json(messages);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Post a message to a discussion
+  app.post('/api/chat/discussions/:id/messages', async (req, res) => {
+    const { sender, text } = req.body;
+    const discussionId = req.params.id;
+    if (!sender || !text) {
+      return res.status(400).json({ error: "sender et text sont requis" });
+    }
+    try {
+      const result = await dbRun(
+        "INSERT INTO chat_messages (discussion_id, sender, text, created_at) VALUES (?, ?, ?, ?)",
+        [discussionId, sender, text, new Date().toISOString()]
+      );
+      const newId = mysqlPool ? (result as any).insertId : result;
+      const msg = await dbGet("SELECT * FROM chat_messages WHERE id = ?", [newId]);
+      res.json(msg);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // List all discussions for Admin
+  app.get('/api/chat/discussions', async (req, res) => {
+    try {
+      const discussions = await dbAll("SELECT * FROM chat_discussions ORDER BY started_at DESC");
+      const enriched = [];
+      for (const d of discussions) {
+        const lastMsg = await dbGet("SELECT * FROM chat_messages WHERE discussion_id = ? ORDER BY id DESC LIMIT 1", [d.id]);
+        enriched.push({
+          ...d,
+          lastMessage: lastMsg || null
+        });
+      }
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Update discussion status (e.g. close)
+  app.put('/api/chat/discussions/:id', async (req, res) => {
+    const { status } = req.body;
+    try {
+      await dbRun("UPDATE chat_discussions SET status = ? WHERE id = ?", [status || 'active', req.params.id]);
+      res.json({ message: "Discussion mise à jour." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Delete a discussion
+  app.delete('/api/chat/discussions/:id', async (req, res) => {
+    try {
+      await dbRun("DELETE FROM chat_discussions WHERE id = ?", [req.params.id]);
+      await dbRun("DELETE FROM chat_messages WHERE discussion_id = ?", [req.params.id]);
+      res.json({ message: "Discussion supprimée." });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  const HARDCODED_SUPER_ADMINS = [
+    {
+      id: -1,
+      name: "Support SapPay",
+      email: "support@sappay.net",
+      status: "Actif",
+      role: "Super Admin",
+      permissions: ["site_settings", "dossiers", "users", "centres", "news", "settings"],
+      created_date: "25 Juin 2026",
+      createdDate: "25 Juin 2026"
+    },
+    {
+      id: -2,
+      name: "Mohamed Mande",
+      email: "mandemohamed68@gmail.com",
+      status: "Actif",
+      role: "Super Admin",
+      permissions: ["site_settings", "dossiers", "users", "centres", "news", "settings"],
+      created_date: "25 Juin 2026",
+      createdDate: "25 Juin 2026"
+    },
+    {
+      id: -3,
+      name: "SFankany",
+      email: "sfankany@sappay.net",
+      status: "Actif",
+      role: "Super Admin",
+      permissions: ["site_settings", "dossiers", "users", "centres", "news", "settings"],
+      created_date: "25 Juin 2026",
+      createdDate: "25 Juin 2026"
+    }
+  ];
+
   // Admin users (Admins) API endpoint
   app.get('/api/admins', async (req, res) => {
     try {
@@ -643,9 +857,15 @@ async function startServer() {
       // map permissions back from JSON
       const mapped = admins.map(a => ({
         ...a,
-        permissions: JSON.parse(a.permissions || '[]')
+        permissions: JSON.parse(a.permissions || '[]'),
+        createdDate: a.created_date || ""
       }));
-      res.json(mapped);
+
+      const dbAdmins = mapped.filter(a => 
+        !['support@sappay.net', 'mandemohamed68@gmail.com', 'sfankany@sappay.net'].includes(a.email.toLowerCase().trim())
+      );
+
+      res.json([...HARDCODED_SUPER_ADMINS, ...dbAdmins]);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -654,6 +874,9 @@ async function startServer() {
   app.post('/api/admins', async (req, res) => {
     const a = req.body;
     try {
+      if (['support@sappay.net', 'mandemohamed68@gmail.com', 'sfankany@sappay.net'].includes(a.email.toLowerCase().trim())) {
+        return res.status(400).json({ error: 'Cet email est réservé pour un Super Administrateur système et ne peut être créé en BDD.' });
+      }
       const result = await dbRun(
         'INSERT INTO admin_users (name, email, status, role, permissions, created_date) VALUES (?, ?, ?, ?, ?, ?)',
         [a.name, a.email, a.status || 'Actif', a.role, JSON.stringify(a.permissions || []), new Date().toISOString()]
@@ -667,6 +890,10 @@ async function startServer() {
   app.put('/api/admins/:id', async (req, res) => {
     const a = req.body;
     try {
+      const idNum = Number(req.params.id);
+      if (idNum < 0 || idNum === 1 || ['support@sappay.net', 'mandemohamed68@gmail.com', 'sfankany@sappay.net'].includes(a.email.toLowerCase().trim())) {
+        return res.status(403).json({ error: 'Ce Super Administrateur système ne peut pas être modifié.' });
+      }
       await dbRun(
         'UPDATE admin_users SET name = ?, email = ?, status = ?, role = ?, permissions = ? WHERE id = ?',
         [a.name, a.email, a.status, a.role, JSON.stringify(a.permissions || []), req.params.id]
@@ -679,6 +906,10 @@ async function startServer() {
 
   app.delete('/api/admins/:id', async (req, res) => {
     try {
+      const idNum = Number(req.params.id);
+      if (idNum < 0 || idNum === 1) {
+        return res.status(403).json({ error: 'Ce Super Administrateur système ne peut pas être supprimé.' });
+      }
       await dbRun('DELETE FROM admin_users WHERE id = ?', [req.params.id]);
       res.json({ message: 'Administrateur supprimé.' });
     } catch (error: any) {

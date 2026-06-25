@@ -21,12 +21,22 @@ import {
   Bot
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { 
+  getSiteSettings, 
+  safeStorage, 
+  getOrCreateDiscussion, 
+  sendChatMessage, 
+  getDiscussionMessages,
+  ChatDiscussion,
+  ChatMessageRecord 
+} from '../lib/dataStore';
 
 type ChatMessage = {
   id: string;
   sender: 'user' | 'bot';
   text: string;
   time: string;
+  rawSender?: string;
 };
 
 export default function MainLayout() {
@@ -35,7 +45,9 @@ export default function MainLayout() {
   const [whatsappPhone, setWhatsappPhone] = useState('+226 25 30 00 00');
   const [whatsappMessage, setWhatsappMessage] = useState('Bonjour CAMA, je souhaite avoir des renseignements concernant mon enrôlement.');
   
-  // Chat state
+  // Site settings & Chat state
+  const [settings, setSettings] = useState<any>(null);
+  const [activeDiscussion, setActiveDiscussion] = useState<ChatDiscussion | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     { id: '1', sender: 'bot', text: 'Bonjour ! 👋 Bienvenue sur le portail d\'assistance CAMA. Comment puis-je vous aider aujourd\'hui ?', time: 'À l\'instant' }
   ]);
@@ -50,6 +62,88 @@ export default function MainLayout() {
     { q: "Où sont les cliniques agréées ?", a: "La CAMA dispose d'un réseau conventionné de 128 cliniques et officines. Vous trouverez l'annuaire complet et cartographié dans notre catalogue des services section 'Réseau de soins'." },
     { q: "Quels sont les taux de couverture ?", a: "La CAMA prend en charge de 70% à 100% des frais de santé selon la nature des soins et le type de d'intervention médicale, dans le strict respect de la réglementation militaire de prévoyance." }
   ];
+
+  // Load site settings
+  useEffect(() => {
+    getSiteSettings().then(setSettings).catch(console.error);
+  }, []);
+
+  // Check if direct advisor mode is active and within availability hours
+  const isAdvisorAvailable = () => {
+    if (!settings?.chatAdvisorActive) return false;
+    const start = settings?.chatStartHour || "08:00";
+    const end = settings?.chatEndHour || "17:00";
+    const now = new Date();
+    const currentStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); // "HH:MM"
+    return currentStr >= start && currentStr <= end;
+  };
+
+  const activeAdvisorMode = isAdvisorAvailable();
+
+  // Create or load active advisor discussion if available and modal is opened
+  useEffect(() => {
+    if (showAssistantModal && activeAdvisorMode) {
+      let chatSessionId = safeStorage.getItem('cama_chat_session_id');
+      if (!chatSessionId) {
+        chatSessionId = 'session_' + Math.random().toString(36).substring(2, 11);
+        safeStorage.setItem('cama_chat_session_id', chatSessionId);
+      }
+      
+      let userEmail = '';
+      let userName = '';
+      try {
+        const sessionStr = safeStorage.getItem('cama_session');
+        if (sessionStr) {
+          const u = JSON.parse(sessionStr);
+          userEmail = u.email || '';
+          userName = u.name || u.fullName || u.email || '';
+        }
+      } catch (e) {}
+
+      getOrCreateDiscussion(chatSessionId, userEmail, userName).then(res => {
+        setActiveDiscussion(res.discussion);
+        if (res.messages && res.messages.length > 0) {
+          setChatMessages(res.messages.map(m => ({
+            id: m.id.toString(),
+            sender: m.sender === 'user' ? 'user' : 'bot',
+            text: m.text,
+            time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            rawSender: m.sender
+          })));
+        } else {
+          const welcomeText = `Bonjour ${userName || 'Cher Membre'}! 👋 Un conseiller CAMA va prendre en charge votre discussion. N'hésitez pas à nous laisser un message ci-dessous, nous sommes en ligne !`;
+          sendChatMessage(res.discussion.id, 'advisor', welcomeText).then(m => {
+            setChatMessages([{
+              id: m.id.toString(),
+              sender: 'bot',
+              text: welcomeText,
+              time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              rawSender: 'advisor'
+            }]);
+          });
+        }
+      }).catch(console.error);
+    }
+  }, [showAssistantModal, activeAdvisorMode]);
+
+  // Polling for live advisor answers
+  useEffect(() => {
+    let interval: any;
+    if (showAssistantModal && activeAdvisorMode && activeDiscussion) {
+      interval = setInterval(() => {
+        getDiscussionMessages(activeDiscussion.id).then(msgs => {
+          setChatMessages(msgs.map(m => ({
+            id: m.id.toString(),
+            sender: m.sender === 'user' ? 'user' : 'bot',
+            text: m.text,
+            time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            rawSender: m.sender
+          })));
+        }).catch(console.error);
+      }, 3500); // Poll every 3.5 seconds
+    }
+    return () => clearInterval(interval);
+  }, [showAssistantModal, activeAdvisorMode, activeDiscussion]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -73,6 +167,24 @@ export default function MainLayout() {
 
     setChatMessages(prev => [...prev, newUserMsg]);
     setChatInput('');
+
+    // If active advisor mode is enabled, persist to database instead of simulated bot reply
+    if (activeAdvisorMode && activeDiscussion) {
+      sendChatMessage(activeDiscussion.id, 'user', textToSend).then(m => {
+        // Refresh message list
+        getDiscussionMessages(activeDiscussion.id).then(msgs => {
+          setChatMessages(msgs.map(m => ({
+            id: m.id.toString(),
+            sender: m.sender === 'user' ? 'user' : 'bot',
+            text: m.text,
+            time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            rawSender: m.sender
+          })));
+        });
+      }).catch(console.error);
+      return;
+    }
+
     setIsTyping(true);
 
     // Simulate bot reply
@@ -193,11 +305,19 @@ export default function MainLayout() {
             <div className="bg-[#008a4b] text-white p-4 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                  <Bot className="w-6 h-6 text-yellow-300" />
+                  {activeAdvisorMode ? (
+                    <User className="w-6 h-6 text-yellow-300" />
+                  ) : (
+                    <Bot className="w-6 h-6 text-yellow-300" />
+                  )}
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm leading-none">Assistant CAMA</h3>
-                  <span className="text-xs text-green-100">En ligne pour vous aider</span>
+                  <h3 className="font-extrabold text-sm leading-none">
+                    {activeAdvisorMode ? "Conseiller CAMA" : "Assistant CAMA"}
+                  </h3>
+                  <span className="text-xs text-green-100">
+                    {activeAdvisorMode ? "Messagerie en direct • En ligne" : "En ligne pour vous aider"}
+                  </span>
                 </div>
               </div>
               <button 
@@ -210,10 +330,17 @@ export default function MainLayout() {
 
             {/* Chat Messages Body */}
             <div className="flex-grow p-4 overflow-y-auto bg-slate-50 space-y-4">
-              <div className="bg-green-50 rounded-xl p-3 border border-green-100 text-xs text-gray-700 leading-relaxed mb-2">
-                <span className="font-bold text-[#008a4b] block mb-1">CAMA Info</span>
-                Posez vos questions ci-dessous ou cliquez sur un sujet fréquent de notre foire aux questions rapide.
-              </div>
+              {activeAdvisorMode ? (
+                <div className="bg-blue-50 rounded-xl p-3 border border-blue-100 text-xs text-gray-700 leading-relaxed mb-2">
+                  <span className="font-bold text-blue-700 block mb-1">Assistance en direct</span>
+                  Vous êtes connecté(e) en temps réel avec l'un de nos conseillers militaires. Saisissez votre question ci-dessous pour obtenir une réponse rapide.
+                </div>
+              ) : (
+                <div className="bg-green-50 rounded-xl p-3 border border-green-100 text-xs text-gray-700 leading-relaxed mb-2">
+                  <span className="font-bold text-[#008a4b] block mb-1">CAMA Info</span>
+                  Posez vos questions ci-dessous ou cliquez sur un sujet fréquent de notre foire aux questions rapide.
+                </div>
+              )}
 
               {chatMessages.map(msg => (
                 <div 

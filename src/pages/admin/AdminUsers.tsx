@@ -276,6 +276,10 @@ export default function AdminUsers() {
     if (!adminName || !adminEmail) return;
 
     if (editingAdmin) {
+      if (editingAdmin.id === 1 || editingAdmin.id < 0) {
+        alert("Ce Super Administrateur système ne peut pas être modifié.");
+        return;
+      }
       const updatedAdmin: AdminUser = {
         id: editingAdmin.id,
         name: adminName,
@@ -323,8 +327,8 @@ export default function AdminUsers() {
   };
 
   const handleAdminDelete = (id: number) => {
-    if (id === 1) {
-      alert("Le Super Administrateur principal d'origine ne peut pas être supprimé pour garantir l'accès au système.");
+    if (id === 1 || id < 0) {
+      alert("Ce Super Administrateur système ne peut pas être supprimé.");
       return;
     }
     const result = deleteAdminUser(id);
@@ -657,7 +661,7 @@ export default function AdminUsers() {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          {adm.id !== 1 && (
+                          {adm.id !== 1 && adm.id >= 0 && (
                             <button 
                               onClick={() => handleAdminDelete(adm.id)}
                               className="text-red-500 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors mx-1 font-bold" 

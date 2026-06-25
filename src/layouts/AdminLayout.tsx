@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Building2, Newspaper, Settings, LogOut, Bell, Globe, ChevronDown, User as UserIcon } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Building2, Newspaper, Settings, LogOut, Bell, Globe, ChevronDown, User as UserIcon, MessageSquare } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { getSiteSettings } from '../lib/dataStore';
@@ -33,6 +33,7 @@ export default function AdminLayout() {
   const navigation = [
     { name: 'Tableau de bord', href: '/admin', icon: LayoutDashboard },
     { name: 'Gestion Site Web', href: '/admin/site', icon: Globe },
+    { name: 'Messagerie Chat', href: '/admin/chat', icon: MessageSquare },
     { name: 'Dossiers enrôlement', href: '/admin/dossiers', icon: FileText },
     { name: 'Assurés & Utilisateurs', href: '/admin/users', icon: Users },
     { name: 'Centres de santé', href: '/admin/centres', icon: Building2 },
