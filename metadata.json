@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Portail CAMA",
+  "description": "Portail institutionnel et d\u0027enrôlement de la Caisse d\u0027Assurance Maladie des Armées (CAMA).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
