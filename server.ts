@@ -116,6 +116,46 @@ async function startServer() {
       }
       console.log('Base de données initialisée avec', scriptName);
     }
+    
+    // Ensure logo and site title columns exist in site_settings table
+    const alterColumns = async () => {
+      const cols = [
+        { name: 'logo_url', type: mysqlPool ? 'LONGTEXT' : 'TEXT' },
+        { name: 'logo_width', type: 'INT' },
+        { name: 'site_title', type: 'VARCHAR(255)' },
+        { name: 'site_slogan', type: 'VARCHAR(255)' },
+        { name: 'vision_content', type: mysqlPool ? 'LONGTEXT' : 'TEXT' },
+        { name: 'rgpd_content', type: mysqlPool ? 'LONGTEXT' : 'TEXT' }
+      ];
+      
+      for (const col of cols) {
+        try {
+          if (mysqlPool) {
+            const [check] = await mysqlPool.execute(
+              `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'site_settings' AND COLUMN_NAME = ?`,
+              [col.name]
+            );
+            if ((check as any[]).length === 0) {
+              await mysqlPool.execute(`ALTER TABLE site_settings ADD COLUMN ${col.name} ${col.type}`);
+              console.log(`Added column ${col.name} to site_settings table in MariaDB`);
+            }
+          } else {
+            try {
+              sqliteDb.prepare(`ALTER TABLE site_settings ADD COLUMN ${col.name} ${col.type}`).run();
+              console.log(`Added column ${col.name} to site_settings table in SQLite`);
+            } catch (err: any) {
+              if (!err.message.includes('duplicate column name')) {
+                throw err;
+              }
+            }
+          }
+        } catch (e: any) {
+          console.error(`Error altering table for column ${col.name}:`, e.message);
+        }
+      }
+    };
+    await alterColumns();
   } catch (error) {
     console.error("Erreur lors de la vérification/initialisation de la BDD:", error);
   }
@@ -502,7 +542,13 @@ async function startServer() {
         menuVisibility: safeParse(row.menu_visibility, {}),
         sectionTitles: safeParse(row.section_titles, {}),
         footer: safeParse(row.footer, {}),
-        faqs: safeParse(row.faqs, [])
+        faqs: safeParse(row.faqs, []),
+        logoUrl: row.logo_url || "https://lh3.googleusercontent.com/d/1Xy_JkXv_E6NfT8Z_wG7_G_Fv5R0q9Y0K",
+        logoWidth: Number(row.logo_width) || 80,
+        siteTitle: row.site_title || "CAMA",
+        siteSlogan: row.site_slogan || "CAISSE D'ASSURANCE MALADIE DES ARMÉES",
+        visionContent: row.vision_content || "Notre vision est de devenir un modèle d’excellence en matière de protection sociale et d’assurance maladie militaire en Afrique de l'Ouest. Nous nous engageons à offrir une couverture sanitaire universelle, solidaire et équitable à l'ensemble des forces armées nationales, de leurs familles et des retraités militaires.\n\nÀ travers la modernisation constante de nos infrastructures, la digitalisation de nos processus de traitement des dossiers et des partenariats solides avec un réseau étendu de centres de soins de qualité, nous veillons à ce que chaque héros de notre nation et ses ayants droit bénéficient d'une prise en charge médicale rapide, humaine et efficace, partout sur le territoire.",
+        rgpdContent: row.rgpd_content || "Conformément aux réglementations nationales et internationales en vigueur concernant la protection des données personnelles, la Caisse d'Assurance Maladie des Armées (CAMA) s'engage à assurer la confidentialité, la sécurité et l'intégrité de toutes les données collectées sur ses plateformes.\n\nLes données d’enrôlement de vos membres de famille, vos informations médicales et vos pièces justificatives sont exclusivement traitées pour la gestion de vos droits d’assurance maladie et la validation de vos prises en charge. Vos données ne sont en aucun cas cédées, vendues ou partagées avec des tiers non autorisés. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données personnelles sur simple demande adressée à notre Délégué à la Protection des Données (DPO)."
       };
       res.json(settings);
     } catch (error: any) {
@@ -522,7 +568,8 @@ async function startServer() {
             hero_bg_watermark_opacity = ?, prestations = ?, dg_name = ?, dg_message = ?, dg_citation = ?, dg_image = ?, 
             about_content = ?, statistics = ?, facebook_page_url = ?, quality_citation = ?, quality_author = ?, 
             testimonials = ?, partners = ?, hero_image = ?, hero_title = ?, hero_subtitle = ?, menu_visibility = ?, 
-            section_titles = ?, footer = ?, faqs = ?
+            section_titles = ?, footer = ?, faqs = ?, logo_url = ?, logo_width = ?, site_title = ?, site_slogan = ?,
+            vision_content = ?, rgpd_content = ?
           WHERE id = ?
         `;
         const params = [
@@ -531,7 +578,8 @@ async function startServer() {
           JSON.stringify(s.aboutContent || {}), JSON.stringify(s.statistics || []), s.facebookPageUrl, s.qualityCitation, s.qualityAuthor,
           JSON.stringify(s.testimonials || []), JSON.stringify(s.partners || []), s.heroImage, s.heroTitle, s.heroSubtitle,
           JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
-          JSON.stringify(s.faqs || []),
+          JSON.stringify(s.faqs || []), s.logoUrl, s.logoWidth, s.siteTitle, s.siteSlogan,
+          s.visionContent, s.rgpdContent,
           row.id
         ];
         await dbRun(sql, params);
@@ -542,8 +590,9 @@ async function startServer() {
             hero_bg_watermark_opacity, prestations, dg_name, dg_message, dg_citation, dg_image, 
             about_content, statistics, facebook_page_url, quality_citation, quality_author, 
             testimonials, partners, hero_image, hero_title, hero_subtitle, menu_visibility, 
-            section_titles, footer, faqs
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            section_titles, footer, faqs, logo_url, logo_width, site_title, site_slogan,
+            vision_content, rgpd_content
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const params = [
           1, s.popupTitle, s.popupSubtitle, s.popupContent, s.popupActive ? 1 : 0, s.popupImage, s.popupMaxViews,
@@ -551,7 +600,8 @@ async function startServer() {
           JSON.stringify(s.aboutContent || {}), JSON.stringify(s.statistics || []), s.facebookPageUrl, s.qualityCitation, s.qualityAuthor,
           JSON.stringify(s.testimonials || []), JSON.stringify(s.partners || []), s.heroImage, s.heroTitle, s.heroSubtitle,
           JSON.stringify(s.menuVisibility || {}), JSON.stringify(s.sectionTitles || {}), JSON.stringify(s.footer || {}),
-          JSON.stringify(s.faqs || [])
+          JSON.stringify(s.faqs || []), s.logoUrl, s.logoWidth, s.siteTitle, s.siteSlogan,
+          s.visionContent, s.rgpdContent
         ];
         await dbRun(sql, params);
       }

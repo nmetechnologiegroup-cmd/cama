@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import * as LucideIcons from 'lucide-react';
 import { 
   ArrowRight, 
   FileText, 
@@ -423,7 +424,13 @@ export default function Home() {
   
               <div className="flex flex-wrap justify-center gap-6">
                 {(settings.services || []).map((svc, i) => {
-                  const Icon = svc.iconType === 'Laptop' ? Laptop : svc.iconType === 'FileCheck' ? FileCheck : svc.iconType === 'MapPin' ? MapPin : Building;
+                  let IconComponent = Laptop;
+                  if (svc.iconType === 'FileCheck') IconComponent = FileCheck;
+                  else if (svc.iconType === 'MapPin') IconComponent = MapPin;
+                  else if (svc.iconType === 'Building') IconComponent = Building;
+                  else if (svc.iconType === 'CustomIcon' && svc.customIconName) {
+                    IconComponent = (LucideIcons as any)[svc.customIconName] || Sparkles;
+                  }
                   return (
                     <Link 
                        key={i}
@@ -448,7 +455,7 @@ export default function Home() {
                            ) : svc.iconType === 'Emoji' ? (
                              <span className="text-4xl leading-none">{svc.emoji || '🌟'}</span>
                            ) : (
-                             <Icon className="w-10 h-10 group-hover:drop-shadow-md" />
+                             <IconComponent className="w-10 h-10 group-hover:drop-shadow-md" />
                            )}
                          </motion.div>
                          <h4 className="font-extrabold text-gray-900 dark:text-white uppercase tracking-wider text-sm transition-colors">{svc.name}</h4>

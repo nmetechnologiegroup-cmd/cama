@@ -4,6 +4,7 @@
  */
 
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import ScrollToTop from './components/ScrollToTop';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
 import MainLayout from './layouts/MainLayout';
@@ -33,6 +34,7 @@ export default function App() {
     <ThemeProvider>
       <LanguageProvider>
         <Router>
+          <ScrollToTop />
           <Routes>
             {/* Public & Assuré Routes */}
             <Route element={<MainLayout />}>

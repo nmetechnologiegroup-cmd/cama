@@ -129,6 +129,7 @@ export interface SiteService {
   url?: string;
   imageUrl?: string;
   emoji?: string;
+  customIconName?: string;
 }
 
 export interface SitePartner {
@@ -316,8 +317,8 @@ export const DEFAULT_SITE_SETTINGS: SiteWebSettings = {
   logoWidth: 80,
   siteTitle: "CAMA",
   siteSlogan: "CAISSE D'ASSURANCE MALADIE DES ARMÉES",
-  visionContent: "Vision",
-  rgpdContent: "RGPD",
+  visionContent: "Notre vision est de devenir un modèle d’excellence en matière de protection sociale et d’assurance maladie militaire en Afrique de l'Ouest. Nous nous engageons à offrir une couverture sanitaire universelle, solidaire et équitable à l'ensemble des forces armées nationales, de leurs familles et des retraités militaires.\n\nÀ travers la modernisation constante de nos infrastructures, la digitalisation de nos processus de traitement des dossiers et des partenariats solides avec un réseau étendu de centres de soins de qualité, nous veillons à ce que chaque héros de notre nation et ses ayants droit bénéficient d'une prise en charge médicale rapide, humaine et efficace, partout sur le territoire.",
+  rgpdContent: "Conformément aux réglementations nationales et internationales en vigueur concernant la protection des données personnelles, la Caisse d'Assurance Maladie des Armées (CAMA) s'engage à assurer la confidentialité, la sécurité et l'intégrité de toutes les données collectées sur ses plateformes.\n\nLes données d’enrôlement de vos membres de famille, vos informations médicales et vos pièces justificatives sont exclusivement traitées pour la gestion de vos droits d’assurance maladie et la validation de vos prises en charge. Vos données ne sont en aucun cas cédées, vendues ou partagées avec des tiers non autorisés. Vous disposez d’un droit d’accès, de rectification et de suppression de vos données personnelles sur simple demande adressée à notre Délégué à la Protection des Données (DPO).",
   flashInfos: [],
   showFlashInfos: true,
   emailSettings: {

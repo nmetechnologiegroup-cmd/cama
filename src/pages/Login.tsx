@@ -1,13 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, User as UserIcon, ShieldCheck, Phone, MapPin, Building, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getUsers, addUser, safeStorage } from '../lib/dataStore';
+import { getUsers, addUser, safeStorage, getSiteSettings } from '../lib/dataStore';
 
 export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    getSiteSettings().then(setSettings).catch(console.error);
+  }, []);
   
   // Registration fields
   const [name, setName] = useState('');
@@ -78,17 +83,17 @@ export default function Login() {
       >
         <div className="flex justify-center mb-6">
           <img 
-            src="/src/assets/images/cama_logo_1782214925115.jpg" 
-            alt="Logo CAMA" 
+            src={settings?.logoUrl || "/src/assets/images/cama_logo_1782214925115.jpg"} 
+            alt="Logo" 
             className="w-24 h-24 object-contain rounded-full shadow-lg border border-gray-100 bg-white"
             referrerPolicy="no-referrer"
           />
         </div>
         <h2 className="mt-2 text-center text-3xl font-extrabold text-gray-900">
-          Connexion à l'espace
+          {settings?.siteTitle ? `Connexion à ${settings.siteTitle}` : "Connexion à l'espace"}
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          Plateforme d'enrôlement des membres de famille
+          {settings?.siteSlogan || "Plateforme d'enrôlement des membres de famille"}
         </p>
       </motion.div>
 

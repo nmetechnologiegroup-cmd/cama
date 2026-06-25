@@ -3,17 +3,21 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, FileText, Building2, Newspaper, Settings, LogOut, Bell, Globe, ChevronDown, User as UserIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { getSiteSettings } from '../lib/dataStore';
 
 export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    getSiteSettings().then(setSettings).catch(console.error);
+
     function handleClickOutside(event: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setShowNotifications(false);
@@ -46,12 +50,12 @@ export default function AdminLayout() {
       <div className="w-64 bg-slate-900 flex flex-col text-slate-300 shadow-xl z-20 transition-colors">
         <div className="h-20 flex items-center justify-start px-6 text-white font-bold text-lg border-b border-slate-800 bg-slate-950 gap-2.5">
           <img 
-            src="/src/assets/images/cama_logo_1782214925115.jpg" 
+            src={settings?.logoUrl || "/src/assets/images/cama_logo_1782214925115.jpg"} 
             alt="Logo CAMA" 
             className="w-10 h-10 object-contain rounded-full shadow border border-slate-700 bg-white"
             referrerPolicy="no-referrer"
           />
-          <span className="tracking-wide font-extrabold">Admin CAMA</span>
+          <span className="tracking-wide font-extrabold">{settings?.siteTitle ? `Admin ${settings.siteTitle}` : "Admin CAMA"}</span>
         </div>
         <div className="flex-1 overflow-y-auto py-6">
           <nav className="space-y-2 px-4">

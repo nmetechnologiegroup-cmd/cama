@@ -33,6 +33,7 @@ import {
   Settings,
   AlertTriangle
 } from 'lucide-react';
+import * as LucideIcons from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getSiteSettings, saveSiteSettings, SitePrestation, SiteService, SitePartner, safeStorage, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
 import { compressImage } from '../../lib/utils';
@@ -1474,6 +1475,11 @@ export default function AdminSiteWeb() {
                                <span className="text-[8px] font-bold">Upload</span>
                              </div>
                            )
+                         ) : svc.iconType === 'CustomIcon' ? (
+                           (() => {
+                             const IconComp = (LucideIcons as any)[svc.customIconName || 'Sparkles'] || LucideIcons.Sparkles;
+                             return <IconComp className="w-6 h-6" />;
+                           })()
                          ) : svc.iconType === 'Emoji' ? (
                            <span className="text-2xl">{svc.emoji || '🌟'}</span>
                          ) : svc.iconType === 'Laptop' ? <Laptop className="w-6 h-6" /> : svc.iconType === 'FileCheck' ? <FileCheck className="w-6 h-6" /> : svc.iconType === 'MapPin' ? <MapPin className="w-6 h-6" /> : <Building className="w-6 h-6" />}
@@ -1504,9 +1510,31 @@ export default function AdminSiteWeb() {
                           <option value="FileCheck">Dossier</option>
                           <option value="MapPin">Lieu</option>
                           <option value="Building">Bâtiment</option>
+                          <option value="CustomIcon">Icône Lucide</option>
                           <option value="Image">Image / Logo</option>
                           <option value="Emoji">Emoji</option>
                         </select>
+                        {svc.iconType === 'CustomIcon' && (
+                          <div className="space-y-1">
+                            <input 
+                              type="text" 
+                              className="w-full text-center px-2 py-1 border border-gray-300 rounded text-[11px] outline-none bg-white focus:border-[#008a4b] transition font-mono" 
+                              placeholder="Nom icône (ex: Heart)"
+                              value={svc.customIconName || ''}
+                              onChange={(e) => updateServiceValue(i, 'customIconName', e.target.value)}
+                            />
+                            <p className="text-[8px] text-gray-400 leading-none">Ex: CreditCard, HeartPulse, ShieldCheck</p>
+                          </div>
+                        )}
+                        {svc.iconType === 'Image' && (
+                          <input 
+                            type="text" 
+                            className="w-full text-center px-2 py-1 border border-gray-300 rounded text-[10px] outline-none bg-white focus:border-[#008a4b] transition" 
+                            placeholder="Ou collez URL d'image"
+                            value={svc.imageUrl || ''}
+                            onChange={(e) => updateServiceValue(i, 'imageUrl', e.target.value)}
+                          />
+                        )}
                         {svc.iconType === 'Emoji' && (
                           <input 
                             type="text" 
