@@ -137,11 +137,6 @@ export default function Login() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
               >
-                <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                  <strong>Mode démo :</strong><br/>
-                  Utilisez <strong>superadmin@cama.bf</strong> (mot de passe libre) pour l'admin. <br/>
-                  Utilisez <strong>i.kabore@armee.bf</strong> (mot de passe: password123) pour l'espace assuré.
-                </div>
 
                 {error && (
                   <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 font-medium">

@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, FileText, Building2, Newspaper, Settings, LogOut, Bell, Globe, ChevronDown, User as UserIcon, MessageSquare } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { getSiteSettings } from '../lib/dataStore';
+import { getSiteSettings, safeStorage } from '../lib/dataStore';
 
 export default function AdminLayout() {
   const location = useLocation();
@@ -11,12 +11,30 @@ export default function AdminLayout() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [settings, setSettings] = useState<any>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getSiteSettings().then(setSettings).catch(console.error);
+
+    const sessionStr = safeStorage.getItem('cama_session');
+    if (!sessionStr) {
+      navigate('/login');
+      return;
+    }
+    try {
+      const user = JSON.parse(sessionStr);
+      if (user.role !== 'admin') {
+        navigate('/login');
+        return;
+      }
+      setCurrentUser(user);
+    } catch (e) {
+      navigate('/login');
+      return;
+    }
 
     function handleClickOutside(event: MouseEvent) {
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
@@ -28,7 +46,16 @@ export default function AdminLayout() {
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [navigate]);
+
+  const getInitials = (nameStr: string) => {
+    if (!nameStr) return 'AD';
+    const parts = nameStr.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase();
+    }
+    return nameStr.substring(0, 2).toUpperCase();
+  };
 
   const navigation = [
     { name: 'Tableau de bord', href: '/admin', icon: LayoutDashboard },
@@ -149,11 +176,15 @@ export default function AdminLayout() {
                 className="flex items-center space-x-3 cursor-pointer group"
               >
                 <div className="w-10 h-10 rounded-full bg-[#008a4b] flex items-center justify-center text-white font-bold shadow-md group-hover:bg-[#00703c] transition-colors">
-                  AD
+                  {currentUser ? getInitials(currentUser.name) : 'AD'}
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-sm font-bold text-gray-900 dark:text-white leading-tight transition-colors">Administrateur</span>
-                  <span className="text-xs text-gray-500 dark:text-slate-400 font-medium transition-colors">Direction</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white leading-tight transition-colors">
+                    {currentUser?.name || 'Administrateur'}
+                  </span>
+                  <span className="text-xs text-gray-500 dark:text-slate-400 font-medium transition-colors">
+                    {currentUser?.email === 'support@sappay.net' || currentUser?.email === 'mandemohamed68@gmail.com' || currentUser?.email === 'sfankany@sappay.net' ? 'Super Admin' : 'Direction'}
+                  </span>
                 </div>
                 <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showProfileMenu ? 'rotate-180' : ''}`} />
               </div>
@@ -167,8 +198,12 @@ export default function AdminLayout() {
                     className="absolute right-0 mt-3 w-56 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-gray-200 dark:border-slate-700 z-50 overflow-hidden"
                   >
                     <div className="p-4 border-b border-gray-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
-                      <div className="text-sm font-bold text-gray-900 dark:text-white">Admin Principal</div>
-                      <div className="text-xs text-gray-500 dark:text-slate-400">admin@cama.bf</div>
+                      <div className="text-sm font-bold text-gray-900 dark:text-white">
+                        {currentUser?.name || 'Administrateur'}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-slate-400">
+                        {currentUser?.email || 'admin@cama.bf'}
+                      </div>
                     </div>
                     <div className="p-2">
                       <Link 
