@@ -30,7 +30,8 @@ import {
   LayoutDashboard,
   Mail,
   Bell,
-  Settings
+  Settings,
+  AlertTriangle
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getSiteSettings, saveSiteSettings, SitePrestation, SiteService, SitePartner, safeStorage, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
@@ -45,6 +46,10 @@ export default function AdminSiteWeb() {
     getSiteSettings().then(setSettings);
   }, []);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ title: string; subtitle: string; isError?: boolean }>({
+    title: "Succès de la publication !",
+    subtitle: "Les modifications sont de suite visibles sur la page d'accueil d'un simple clic."
+  });
 
   const popupFileRef = useRef<HTMLInputElement>(null);
   const dgFileRef = useRef<HTMLInputElement>(null);
@@ -167,12 +172,26 @@ export default function AdminSiteWeb() {
   ];
 
   // Handler for publishing changes
-  const handlePublish = () => {
-    saveSiteSettings(settings);
-    setShowToast(true);
-    setTimeout(() => {
-      setShowToast(false);
-    }, 4000);
+  const handlePublish = async () => {
+    try {
+      await saveSiteSettings(settings);
+      setToastMessage({
+        title: "Succès de la publication !",
+        subtitle: "Les modifications ont été enregistrées avec succès.",
+        isError: false
+      });
+      setShowToast(true);
+      setTimeout(() => {
+        setShowToast(false);
+      }, 4000);
+    } catch (err: any) {
+      setToastMessage({
+        title: "Erreur lors de la publication !",
+        subtitle: err.message || "Impossible de sauvegarder les modifications.",
+        isError: true
+      });
+      setShowToast(true);
+    }
   };
 
   // Popup updates
@@ -429,12 +448,20 @@ export default function AdminSiteWeb() {
             initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -50 }}
-            className="fixed top-6 right-6 z-50 bg-green-600 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 border border-green-500 font-medium"
+            className={`fixed top-6 right-6 z-50 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 border font-medium ${
+              toastMessage.isError 
+                ? "bg-red-600 text-white border-red-500" 
+                : "bg-green-600 text-white border-green-500"
+            }`}
           >
-            <CheckCircle2 className="w-6 h-6 animate-bounce" />
+            {toastMessage.isError ? (
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            ) : (
+              <CheckCircle2 className="w-6 h-6 animate-bounce" />
+            )}
             <div>
-              <p className="font-bold">Succès de la publication !</p>
-              <p className="text-xs text-green-100 mt-0.5">Les modifications sont visibles sur la page d'accueil d'un simple clic.</p>
+              <p className="font-bold">{toastMessage.title}</p>
+              <p className="text-xs mt-0.5 opacity-90">{toastMessage.subtitle}</p>
             </div>
             <button onClick={() => setShowToast(false)} className="text-white/80 hover:text-white ml-2 text-sm font-bold">×</button>
           </motion.div>

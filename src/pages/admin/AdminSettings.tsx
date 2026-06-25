@@ -1,4 +1,4 @@
-import { Save, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { Save, ShieldAlert, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import React, { useState, useEffect } from 'react';
 import { getSiteSettings, saveSiteSettings, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
@@ -7,13 +7,21 @@ export default function AdminSettings() {
   const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
   useEffect(() => { getSiteSettings().then(setSettings); }, []);
   const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState<{ text: string, isError?: boolean }>({ text: "Configuration enregistrée avec succès" });
   const [isMaintenance, setIsMaintenance] = useState(false);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    saveSiteSettings(settings);
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+    try {
+      await saveSiteSettings(settings);
+      setToastMessage({ text: "Configuration enregistrée avec succès", isError: false });
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 3000);
+    } catch (err: any) {
+      setToastMessage({ text: err.message || "Erreur de sauvegarde", isError: true });
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 5000);
+    }
   };
 
   const updateFooter = (field: string, value: any) => {
@@ -46,10 +54,18 @@ export default function AdminSettings() {
             initial={{ opacity: 0, y: -20, x: '-50%' }}
             animate={{ opacity: 1, y: 20, x: '-50%' }}
             exit={{ opacity: 0, y: -20, x: '-50%' }}
-            className="fixed top-4 left-1/2 z-50 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl flex items-center border border-slate-700"
+            className={`fixed top-4 left-1/2 z-50 px-6 py-3 rounded-full shadow-2xl flex items-center border ${
+              toastMessage.isError 
+                ? "bg-red-600 border-red-500 text-white" 
+                : "bg-slate-900 border-slate-700 text-white"
+            }`}
           >
-            <CheckCircle2 className="w-5 h-5 text-[#008a4b] mr-2" />
-            <span className="font-bold text-sm tracking-wide">Configuration enregistrée avec succès</span>
+            {toastMessage.isError ? (
+              <AlertTriangle className="w-5 h-5 text-white mr-2" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 text-[#008a4b] mr-2" />
+            )}
+            <span className="font-bold text-sm tracking-wide">{toastMessage.text}</span>
           </motion.div>
         )}
       </AnimatePresence>

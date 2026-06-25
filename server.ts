@@ -54,30 +54,37 @@ async function startServer() {
   }
 
   // Helper for promisified queries (unified interface)
+  const sanitizeParams = (params: any[]): any[] => {
+    return params.map(val => val === undefined ? null : val);
+  };
+
   const dbAll = async (sql: string, params: any[] = []): Promise<any[]> => {
+    const cleanParams = sanitizeParams(params);
     if (mysqlPool) {
-      const [rows] = await mysqlPool.execute(sql.replace(/\?/g, '?'), params);
+      const [rows] = await mysqlPool.execute(sql.replace(/\?/g, '?'), cleanParams);
       return rows as any[];
     }
-    return sqliteDb.prepare(sql).all(params);
+    return sqliteDb.prepare(sql).all(cleanParams);
   };
 
   const dbGet = async (sql: string, params: any[] = []): Promise<any> => {
+    const cleanParams = sanitizeParams(params);
     if (mysqlPool) {
-      const [rows] = await mysqlPool.execute(sql.replace(/\?/g, '?'), params);
+      const [rows] = await mysqlPool.execute(sql.replace(/\?/g, '?'), cleanParams);
       const rowsArray = rows as any[];
       return rowsArray.length > 0 ? rowsArray[0] : undefined;
     }
-    return sqliteDb.prepare(sql).get(params);
+    return sqliteDb.prepare(sql).get(cleanParams);
   };
 
   const dbRun = async (sql: string, params: any[] = []): Promise<{ id: number; changes: number }> => {
+    const cleanParams = sanitizeParams(params);
     if (mysqlPool) {
-      const [result] = await mysqlPool.execute(sql.replace(/\?/g, '?'), params);
+      const [result] = await mysqlPool.execute(sql.replace(/\?/g, '?'), cleanParams);
       const res = result as mysql.ResultSetHeader;
       return { id: res.insertId, changes: res.affectedRows };
     }
-    const info = sqliteDb.prepare(sql).run(params);
+    const info = sqliteDb.prepare(sql).run(cleanParams);
     return { id: info.lastInsertRowid as number, changes: info.changes };
   };
 

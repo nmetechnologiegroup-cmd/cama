@@ -105,7 +105,7 @@ CREATE TABLE articles (
     author VARCHAR(100) NOT NULL,
     category VARCHAR(100),
     content TEXT,
-    image VARCHAR(255)
+    image LONGTEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 6. Table de CONFIGURATION DU SITE WEB (Site Settings)
@@ -115,14 +115,14 @@ CREATE TABLE site_settings (
     popup_subtitle VARCHAR(255),
     popup_content TEXT,
     popup_active TINYINT(1) DEFAULT 1,
-    popup_image VARCHAR(255),
+    popup_image LONGTEXT,
     popup_max_views INT DEFAULT 2,
     hero_bg_watermark_opacity INT DEFAULT 25,
     prestations TEXT, -- JSON array
     dg_name VARCHAR(255),
     dg_message TEXT,
     dg_citation VARCHAR(255),
-    dg_image VARCHAR(255),
+    dg_image LONGTEXT,
     about_content TEXT, -- JSON object
     statistics TEXT, -- JSON array
     facebook_page_url VARCHAR(255),
@@ -130,7 +130,7 @@ CREATE TABLE site_settings (
     quality_author VARCHAR(255),
     testimonials TEXT, -- JSON array
     partners TEXT, -- JSON array
-    hero_image VARCHAR(255),
+    hero_image LONGTEXT,
     hero_title VARCHAR(255),
     hero_subtitle TEXT,
     menu_visibility TEXT, -- JSON object
