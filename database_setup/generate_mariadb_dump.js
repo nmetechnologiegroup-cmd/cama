@@ -56,7 +56,8 @@ async function main() {
       const rows = db.prepare(`SELECT * FROM \`${table}\``).all();
       
       if (rows.length > 0) {
-        sqlDump += `INSERT INTO \`${table}\` (\n  \`${columnNames.join('\`, \``')}\`\n) VALUES\n`;
+        const columnList = columnNames.map(col => `\`${col}\``).join(', ');
+        sqlDump += `INSERT INTO \`${table}\` (\n  ${columnList}\n) VALUES\n`;
         
         const valueStrings = rows.map((row, index) => {
           const values = columnNames.map(col => escapeString(row[col]));
