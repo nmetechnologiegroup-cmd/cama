@@ -63,19 +63,34 @@ export default function MainLayout() {
     { q: "Quels sont les taux de couverture ?", a: "La CAMA prend en charge de 70% à 100% des frais de santé selon la nature des soins et le type de d'intervention médicale, dans le strict respect de la réglementation militaire de prévoyance." }
   ];
 
-  // Load site settings
+  // Load site settings with forceRefresh=true so changes in the admin panel are immediately retrieved
   useEffect(() => {
-    getSiteSettings().then(setSettings).catch(console.error);
+    getSiteSettings(true).then(setSettings).catch(console.error);
   }, []);
 
-  // Check if direct advisor mode is active and within availability hours
+  // Check if direct advisor mode is active and within availability hours (robust, locale-independent, time format safe)
   const isAdvisorAvailable = () => {
     if (!settings?.chatAdvisorActive) return false;
     const start = settings?.chatStartHour || "08:00";
     const end = settings?.chatEndHour || "17:00";
-    const now = new Date();
-    const currentStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }); // "HH:MM"
-    return currentStr >= start && currentStr <= end;
+    
+    try {
+      const [startH, startM] = start.split(':').map(Number);
+      const [endH, endM] = end.split(':').map(Number);
+      
+      const now = new Date();
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+      
+      const currentTotal = currentHours * 60 + currentMinutes;
+      const startTotal = startH * 60 + startM;
+      const endTotal = endH * 60 + endM;
+      
+      return currentTotal >= startTotal && currentTotal <= endTotal;
+    } catch (e) {
+      console.error("Error calculating advisor availability:", e);
+      return false;
+    }
   };
 
   const activeAdvisorMode = isAdvisorAvailable();
@@ -169,19 +184,42 @@ export default function MainLayout() {
     setChatInput('');
 
     // If active advisor mode is enabled, persist to database instead of simulated bot reply
-    if (activeAdvisorMode && activeDiscussion) {
-      sendChatMessage(activeDiscussion.id, 'user', textToSend).then(m => {
-        // Refresh message list
-        getDiscussionMessages(activeDiscussion.id).then(msgs => {
-          setChatMessages(msgs.map(m => ({
-            id: m.id.toString(),
-            sender: m.sender === 'user' ? 'user' : 'bot',
-            text: m.text,
-            time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            rawSender: m.sender
-          })));
-        });
-      }).catch(console.error);
+    if (activeAdvisorMode) {
+      if (activeDiscussion) {
+        sendChatMessage(activeDiscussion.id, 'user', textToSend).then(m => {
+          // Refresh message list
+          getDiscussionMessages(activeDiscussion.id).then(msgs => {
+            setChatMessages(msgs.map(m => ({
+              id: m.id.toString(),
+              sender: m.sender === 'user' ? 'user' : 'bot',
+              text: m.text,
+              time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              rawSender: m.sender
+            })));
+          });
+        }).catch(console.error);
+      } else {
+        // If the discussion is still loading, wait a bit and retry
+        setTimeout(() => {
+          const chatSessionId = safeStorage.getItem('cama_chat_session_id');
+          if (chatSessionId) {
+            getOrCreateDiscussion(chatSessionId, '', '').then(res => {
+              setActiveDiscussion(res.discussion);
+              sendChatMessage(res.discussion.id, 'user', textToSend).then(m => {
+                getDiscussionMessages(res.discussion.id).then(msgs => {
+                  setChatMessages(msgs.map(m => ({
+                    id: m.id.toString(),
+                    sender: m.sender === 'user' ? 'user' : 'bot',
+                    text: m.text,
+                    time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    rawSender: m.sender
+                  })));
+                });
+              });
+            });
+          }
+        }, 800);
+      }
       return;
     }
 
@@ -338,7 +376,11 @@ export default function MainLayout() {
               ) : (
                 <div className="bg-green-50 rounded-xl p-3 border border-green-100 text-xs text-gray-700 leading-relaxed mb-2">
                   <span className="font-bold text-[#008a4b] block mb-1">CAMA Info</span>
-                  Posez vos questions ci-dessous ou cliquez sur un sujet fréquent de notre foire aux questions rapide.
+                  {settings?.chatAdvisorActive ? (
+                    <span>Le service de discussion en direct avec un conseiller est actuellement fermé. Heures de disponibilité : de <strong>{settings?.chatStartHour || "08:00"}</strong> à <strong>{settings?.chatEndHour || "17:00"}</strong>. Posez vos questions ci-dessous au robot d'assistance ou utilisez WhatsApp.</span>
+                  ) : (
+                    <span>Posez vos questions ci-dessous ou cliquez sur un sujet fréquent de notre foire aux questions rapide.</span>
+                  )}
                 </div>
               )}
 
