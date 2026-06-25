@@ -31,7 +31,8 @@ import {
   Mail,
   Bell,
   Settings,
-  AlertTriangle
+  AlertTriangle,
+  MessageSquare
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Link } from 'react-router-dom';
