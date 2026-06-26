@@ -483,11 +483,22 @@ export async function deleteArticle(id: number): Promise<Article[]> {
   return getArticles();
 }
 
+function updateFavicon(logoUrl?: string) {
+  if (typeof window === 'undefined') return;
+  const link = document.getElementById('dynamic-favicon') as HTMLLinkElement;
+  if (link) {
+    link.href = logoUrl || "/src/assets/images/cama_logo_1782214925115.jpg";
+  }
+}
+
 let cachedSiteSettings: SiteWebSettings | null = null;
 let inFlightSiteSettingsPromise: Promise<SiteWebSettings> | null = null;
 
 export async function getSiteSettings(forceRefresh = false): Promise<SiteWebSettings> {
   if (cachedSiteSettings && !forceRefresh) {
+    if (cachedSiteSettings.logoUrl) {
+      updateFavicon(cachedSiteSettings.logoUrl);
+    }
     return cachedSiteSettings;
   }
   if (inFlightSiteSettingsPromise && !forceRefresh) {
@@ -496,6 +507,9 @@ export async function getSiteSettings(forceRefresh = false): Promise<SiteWebSett
   inFlightSiteSettingsPromise = fetchAPI('/site-settings').then(settings => {
     cachedSiteSettings = settings;
     inFlightSiteSettingsPromise = null;
+    if (settings && settings.logoUrl) {
+      updateFavicon(settings.logoUrl);
+    }
     return settings;
   }).catch(err => {
     inFlightSiteSettingsPromise = null;
@@ -507,6 +521,9 @@ export async function getSiteSettings(forceRefresh = false): Promise<SiteWebSett
 export async function saveSiteSettings(settings: SiteWebSettings): Promise<void> {
   await fetchAPI('/site-settings', { method: 'PUT', body: JSON.stringify(settings) });
   cachedSiteSettings = settings;
+  if (settings && settings.logoUrl) {
+    updateFavicon(settings.logoUrl);
+  }
 }
 
 export async function getLogs(userId?: number): Promise<ActionLog[]> {

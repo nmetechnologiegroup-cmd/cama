@@ -810,30 +810,57 @@ export default function Home() {
 
       {/* NEW: Nos partenaires (matching ISSA/CIPRES/BCEAO screenshot group) */}
       {settings.activeSections?.partners !== false && (
-        <div className="py-16 bg-white border-t border-gray-200/50">
+        <div className="py-16 bg-white border-t border-gray-200/50 overflow-hidden">
            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-green-50 text-[#008a4b] font-bold text-xs uppercase tracking-widest rounded-full mb-3">
                  ✦ CAMA
               </div>
               <h2 className="text-4xl font-extrabold text-gray-900 uppercase tracking-wide mb-12">Nos partenaires</h2>
               
-              <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12">
-                 {(settings.partners || []).map((partner) => {
-                   const logoData = partnerLogos[partner.name] || { logoText: partner.name, color: 'text-gray-700', badge: '🤝' };
-                   return (
-                     <motion.div 
-                       key={partner.id}
-                       whileHover={{ scale: 1.05 }}
-                       className="w-44 h-24 bg-white border-2 border-gray-100 rounded-2xl flex flex-col items-center justify-center p-4 shadow-sm hover:border-[#008a4b] cursor-pointer transition overflow-hidden"
-                     >
-                       {partner.logo ? <img src={partner.logo} alt={partner.name} className="w-full h-full object-contain p-2" referrerPolicy="no-referrer" /> : <span className="text-2xl mb-1">{logoData.badge}</span>}
-                       <span className={`font-black uppercase tracking-wider text-sm ${partner.logo ? 'hidden' : logoData.color}`}>
-                         {logoData.logoText}
-                       </span>
-                     </motion.div>
-                   );
-                 })}
-              </div>
+              {(settings.partners || []).length < 5 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 max-w-4xl mx-auto justify-items-center justify-center">
+                   {(settings.partners || []).map((partner) => {
+                     const logoData = partnerLogos[partner.name] || { logoText: partner.name, color: 'text-gray-700', badge: '🤝' };
+                     return (
+                       <motion.div 
+                         key={partner.id}
+                         whileHover={{ scale: 1.05 }}
+                         className="w-full max-w-[220px] h-28 bg-white border-2 border-gray-100 rounded-2xl flex flex-col items-center justify-center p-4 shadow-sm hover:border-[#008a4b] cursor-pointer transition overflow-hidden"
+                       >
+                         {partner.logo ? <img src={partner.logo} alt={partner.name} className="w-full h-full object-contain p-2" referrerPolicy="no-referrer" /> : <span className="text-2xl mb-1">{logoData.badge}</span>}
+                         <span className={`font-black uppercase tracking-wider text-sm ${partner.logo ? 'hidden' : logoData.color}`}>
+                           {logoData.logoText}
+                         </span>
+                       </motion.div>
+                     );
+                   })}
+                </div>
+              ) : (
+                <div className="relative w-full overflow-hidden py-4">
+                  {/* Left and Right fade gradients for luxurious effect */}
+                  <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
+                  <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
+                  
+                  <div className="animate-marquee gap-8">
+                    {/* Duplicate the array 3 times to guarantee smooth continuous infinite scroll */}
+                    {[...(settings.partners || []), ...(settings.partners || []), ...(settings.partners || [])].map((partner, index) => {
+                      const logoData = partnerLogos[partner.name] || { logoText: partner.name, color: 'text-gray-700', badge: '🤝' };
+                      return (
+                        <motion.div 
+                          key={`${partner.id}-${index}`}
+                          whileHover={{ scale: 1.05 }}
+                          className="w-56 h-28 bg-white border-2 border-gray-100 rounded-2xl flex flex-col items-center justify-center p-4 shadow-sm hover:border-[#008a4b] cursor-pointer transition overflow-hidden flex-shrink-0"
+                        >
+                          {partner.logo ? <img src={partner.logo} alt={partner.name} className="w-full h-full object-contain p-2" referrerPolicy="no-referrer" /> : <span className="text-2xl mb-1">{logoData.badge}</span>}
+                          <span className={`font-black uppercase tracking-wider text-sm ${partner.logo ? 'hidden' : logoData.color}`}>
+                            {logoData.logoText}
+                          </span>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
            </div>
         </div>
       )}

@@ -57,7 +57,7 @@ export default function App() {
               <Route path="site" element={<AdminSiteWeb />} />
               <Route path="chat" element={<AdminChat />} />
               <Route path="dossiers" element={<AdminDossiers />} />
-              <Route path="users" element={<AdminUsers />} />
+              <Route path="users" element={<AdminUsers initialTab="admins" hideTabs={true} />} />
               <Route path="centres" element={<AdminCentres />} />
               <Route path="news" element={<AdminNews />} />
               <Route path="settings" element={<AdminSettings />} />

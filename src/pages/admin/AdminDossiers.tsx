@@ -29,9 +29,12 @@ import {
   Smartphone,
   Briefcase,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  ClipboardList,
+  Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import AdminUsers from './AdminUsers';
 import { 
   getRequests, 
   updateRequestStatus, 
@@ -44,6 +47,7 @@ import {
 } from '../../lib/dataStore';
 
 export default function AdminDossiers() {
+  const [activePageTab, setActivePageTab] = useState<'requests' | 'assures'>('assures');
   const [requests, setRequests] = useState<Request[]>([]);
   useEffect(() => { getRequests().then(setRequests); }, []);
   const [users, setUsers] = useState<any[]>([]);
@@ -346,7 +350,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
     setIsMissingPieceModalOpen(true);
   };
 
-  const handleSendMissingPieceEmail = (e: React.FormEvent) => {
+  const handleSendMissingPieceEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!missingPieceRequest) return;
 
@@ -354,13 +358,16 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
     let subject = `CAMA - Action requise : Pièce manquante pour l'enrôlement (#${missingPieceRequest.id})`;
     let content = `Cher militaire ${missingPieceRequest.assure},\n\nLors de l'examen de votre dossier d'enrôlement pour ${missingPieceRequest.membre} ${missingPieceRequest.prenoms || ''} (${missingPieceRequest.lien}), nos agents ont constaté qu'une pièce justificative est manquante ou non conforme.\n\nDocument requis : ${selectedMissingPiece}\n\nNote de l'agent : ${customMissingNote || 'Veuillez nous transmettre une copie lisible de cette pièce dans les plus brefs délais.'}\n\nVous pouvez téléverser ce justificatif en vous connectant sur votre Tableau de Bord CAMA.`;
 
-    const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
-  useEffect(() => { getSiteSettings().then(setSettings); }, []);
-    const templates = settings.notificationTemplates;
-    if (templates?.dossierRejected) {
-      const reason = `Document requis: ${selectedMissingPiece}. Note: ${customMissingNote || 'Veuillez transmettre une copie lisible.'}`;
-      subject = parseNotificationTemplate(templates.dossierRejected.subject, missingPieceRequest, reason);
-      content = parseNotificationTemplate(templates.dossierRejected.body, missingPieceRequest, reason);
+    try {
+      const settings = await getSiteSettings();
+      const templates = settings.notificationTemplates;
+      if (templates?.dossierRejected) {
+        const reason = `Document requis: ${selectedMissingPiece}. Note: ${customMissingNote || 'Veuillez transmettre une copie lisible.'}`;
+        subject = parseNotificationTemplate(templates.dossierRejected.subject, missingPieceRequest, reason);
+        content = parseNotificationTemplate(templates.dossierRejected.body, missingPieceRequest, reason);
+      }
+    } catch (err) {
+      console.error("Error fetching site settings for missing piece email:", err);
     }
 
     sendSimulatedEmail(email, subject, content);
@@ -638,236 +645,275 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
 
   return (
     <div className="space-y-6 text-left">
-      
-      {/* Top Bar Navigation Additions */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100/60">
-        <div className="flex items-center w-full md:w-[350px] bg-slate-50 border border-gray-200 rounded-xl px-4 py-2.5 transition-all focus-within:ring-2 focus-within:ring-[#008a4b]/20 focus-within:border-[#008a4b]">
-          <Search className="w-5 h-5 text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Rechercher souscripteur, matricule..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-transparent border-none focus:outline-none ml-3 text-sm font-medium text-gray-900 placeholder-gray-400"
-          />
+      {/* Header with Title and Page Tabs */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200/60 pb-4">
+        <div>
+          <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Dossiers & Assurés</h2>
+          <p className="text-slate-500 font-medium text-xs mt-1">Gérez et validez les demandes d'enrôlement ou consultez la base officielle des assurés de la Caisse.</p>
         </div>
-        <div className="flex items-center space-x-3 w-full md:w-auto flex-wrap gap-y-2">
-          {/* Status selector */}
-          <div className="flex items-center space-x-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs font-bold text-gray-600">
-            {(['Tous', 'En attente', 'Validé', 'Rejeté', 'Modif. à Valider'] as const).map((filter) => (
-              <button
-                key={filter}
-                onClick={() => setStatusFilter(filter)}
-                className={`px-3 py-2 rounded-lg transition-all ${
-                  statusFilter === filter 
-                    ? 'bg-white text-[#008a4b] shadow-sm' 
-                    : 'hover:text-gray-950'
-                }`}
-              >
-                {filter}
-              </button>
-            ))}
-          </div>
 
-          <button 
-            onClick={handleExportCSV}
-            className="flex justify-center items-center px-4 py-2.5 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-700 shadow-sm transition-all duration-200"
+        {/* Tab switcher */}
+        <div className="flex bg-slate-200/60 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/40">
+          <button
+            onClick={() => { setActivePageTab('requests'); setSearchQuery(''); }}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+              activePageTab === 'requests'
+                ? 'bg-white text-[#008a4b] shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
           >
-            <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV ({filteredRequests.length})
+            <ClipboardList className="w-4 h-4" />
+            Demandes d'enrôlement ({requests.length})
           </button>
-
-          <button 
-            onClick={handleAutoValidation}
-            className="flex justify-center items-center px-4 py-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 shadow-sm transition-all duration-200 gap-1.5"
-            title="Vérifier et valider automatiquement les dossiers conformes aux règles de la FIF"
+          <button
+            onClick={() => { setActivePageTab('assures'); setSearchQuery(''); }}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+              activePageTab === 'assures'
+                ? 'bg-white text-[#008a4b] shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
           >
-            <Sparkles className="w-4 h-4 text-white" /> Validation Auto.
-          </button>
-
-          <button 
-            onClick={handleOpenAddModal}
-            className="flex justify-center items-center px-4 py-2.5 bg-[#008a4b] text-white rounded-xl text-xs font-bold hover:bg-[#00703c] shadow-md transition-all duration-200"
-          >
-            <Plus className="w-4 h-4 mr-1.5" /> Nouveau Dossier
+            <Users className="w-4 h-4" />
+            Base des Assurés ({users.length})
           </button>
         </div>
       </div>
 
-      <motion.div 
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white shadow-sm border border-slate-100/60 rounded-2xl overflow-hidden"
-      >
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-100">
-            <thead className="bg-slate-50/50">
-              <tr>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">ID Dossier</th>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Souscripteur (Militaire)</th>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Membre Enrôlé (Bénéficiaire)</th>
-                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Justificatifs</th>
-                <th scope="col" className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Statut</th>
-                <th scope="col" className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Actions & Décisions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-50">
-              {groupedDossiers.length > 0 ? (
-                groupedDossiers.map((dossier) => (
-                  <Fragment key={dossier.matricule}>
-                    {/* Subscriber Header Row */}
-                    <tr 
-                      onClick={() => toggleDossier(dossier.matricule)}
-                      className="bg-slate-50/50 hover:bg-slate-100 transition-colors cursor-pointer border-l-4 border-[#008a4b]"
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          {expandedDossiers.has(dossier.matricule) ? (
-                            <ChevronDown className="w-4 h-4 text-[#008a4b]" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-gray-400" />
-                          )}
-                          <div className="text-sm font-black text-gray-900 uppercase">
-                             {dossier.numDossier ? (
-                                <span className="bg-slate-200 px-2 py-1 rounded border border-slate-300">{dossier.numDossier}</span>
-                             ) : (
-                                <span className="text-gray-400 italic text-[10px]">Non attribué</span>
-                             )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className="text-sm font-black text-gray-900 uppercase flex items-center gap-1.5">
-                            Dossier de 
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleOpenSubscriberInfo(dossier.matricule); }}
-                              className="text-indigo-600 hover:text-indigo-800 hover:underline transition-colors uppercase font-black tracking-tight focus:outline-none flex items-center gap-1"
-                              title="Consulter les détails du souscripteur"
-                            >
-                              {dossier.subscriber}
-                            </button>
-                          </div>
-                          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                            N° Matricule: {dossier.matricule} • {dossier.requests.length} Membre(s) enrôlé(s)
-                          </div>
-                        </div>
-                      </td>
-                      <td colSpan={4} className="px-6 py-4 text-right">
-                         <div className="flex justify-end items-center gap-3">
-                           <button 
-                              onClick={(e) => { e.stopPropagation(); handleOpenSubscriberInfo(dossier.matricule); }}
-                              className="text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-3 py-1.5 rounded-full uppercase tracking-tighter shadow-sm transition-colors flex items-center gap-1.5"
-                           >
-                              <User className="w-3.5 h-3.5" /> Info Souscripteur
-                           </button>
-                           <span className="text-[10px] font-black text-[#008a4b] bg-white border border-[#008a4b]/20 px-3 py-1.5 rounded-full uppercase tracking-tighter shadow-sm transition-transform">
-                              {expandedDossiers.has(dossier.matricule) ? 'Refermer le dossier' : 'Consulter le dossier complet'}
-                           </span>
-                         </div>
-                      </td>
-                    </tr>
+      {activePageTab === 'assures' ? (
+        <AdminUsers initialTab="assures" hideTabs={true} />
+      ) : (
+        <>
+          {/* Top Bar Navigation Additions */}
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100/60">
+            <div className="flex items-center w-full md:w-[350px] bg-slate-50 border border-gray-200 rounded-xl px-4 py-2.5 transition-all focus-within:ring-2 focus-within:ring-[#008a4b]/20 focus-within:border-[#008a4b]">
+              <Search className="w-5 h-5 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Rechercher souscripteur, matricule..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-transparent border-none focus:outline-none ml-3 text-sm font-medium text-gray-900 placeholder-gray-400"
+              />
+            </div>
+            <div className="flex items-center space-x-3 w-full md:w-auto flex-wrap gap-y-2">
+              {/* Status selector */}
+              <div className="flex items-center space-x-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs font-bold text-gray-600">
+                {(['Tous', 'En attente', 'Validé', 'Rejeté', 'Modif. à Valider'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setStatusFilter(filter)}
+                    className={`px-3 py-2 rounded-lg transition-all ${
+                      statusFilter === filter 
+                        ? 'bg-white text-[#008a4b] shadow-sm' 
+                        : 'hover:text-gray-950'
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
 
-                    {/* Member Rows */}
-                    {expandedDossiers.has(dossier.matricule) && dossier.requests.map((req: any) => (
-                      <tr key={req.id} className="hover:bg-[#008a4b]/5 transition-colors group">
-                        <td className="px-6 py-4 whitespace-nowrap text-[10px] font-black text-gray-400 pl-14">#{req.id}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-0.5">Souscripteur</div>
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); handleOpenSubscriberInfo(req.matricule); }}
-                            className="text-sm font-black text-gray-800 hover:text-indigo-600 hover:underline transition-colors uppercase tracking-tight text-left focus:outline-none flex items-center gap-1"
-                            title="Consulter les détails du souscripteur"
-                          >
-                            <User className="w-3.5 h-3.5 text-gray-400" /> {req.assure}
-                          </button>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-xs font-bold text-[#008a4b] uppercase tracking-widest mb-0.5">{req.lien}</div>
-                          <div className="text-sm font-black text-gray-900 uppercase">{req.membre} {req.prenoms}</div>
-                          <div className="text-[10px] font-bold text-slate-500 mt-1 flex items-center gap-2">
-                             <Calendar className="w-3 h-3" /> {req.date}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex flex-col gap-1.5">
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setSelectedRequest(req); }}
-                              className="text-blue-600 hover:text-blue-800 text-[10px] font-black uppercase flex items-center bg-blue-50/50 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors border border-blue-100 w-fit"
-                            >
-                              <FileUp className="w-3 h-3 mr-1.5" /> Justificatif
-                            </button>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); setSelectedRequest(req); setIsFIFModalOpen(true); }}
-                              className="text-slate-600 hover:text-slate-800 text-[10px] font-black uppercase flex items-center bg-slate-50/50 hover:bg-slate-100 px-3 py-1 rounded-lg transition-colors border border-slate-100 w-fit"
-                            >
-                              <FileText className="w-3 h-3 mr-1.5" /> Fiche FIF
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          {req.statut === 'En attente' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200/50 uppercase"><Clock className="w-3 h-3 mr-1" /> {req.statut}</span>}
-                          {req.statut === 'Validé' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-green-50 text-green-700 border border-green-200/50 uppercase"><CheckCircle className="w-3 h-3 mr-1" /> {req.statut}</span>}
-                          {req.statut === 'Rejeté' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-red-50 text-red-700 border border-red-200/50 uppercase"><XCircle className="w-3 h-3 mr-1" /> {req.statut}</span>}
-                          {req.statut === 'Modif. à Valider' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-purple-50 text-purple-700 border border-purple-200/50 uppercase"><RotateCcw className="w-3 h-3 mr-1" /> {req.statut}</span>}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center justify-center gap-2">
-                            {(req.statut === 'En attente' || req.statut === 'Modif. à Valider') && (
-                              <>
+              <button 
+                onClick={handleExportCSV}
+                className="flex justify-center items-center px-4 py-2.5 bg-slate-800 text-white rounded-xl text-xs font-bold hover:bg-slate-700 shadow-sm transition-all duration-200"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" /> Export CSV ({filteredRequests.length})
+              </button>
+
+              <button 
+                onClick={handleAutoValidation}
+                className="flex justify-center items-center px-4 py-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 shadow-sm transition-all duration-200 gap-1.5"
+                title="Vérifier et valider automatiquement les dossiers conformes aux règles de la FIF"
+              >
+                <Sparkles className="w-4 h-4 text-white" /> Validation Auto.
+              </button>
+
+              <button 
+                onClick={handleOpenAddModal}
+                className="flex justify-center items-center px-4 py-2.5 bg-[#008a4b] text-white rounded-xl text-xs font-bold hover:bg-[#00703c] shadow-md transition-all duration-200"
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> Nouveau Dossier
+              </button>
+            </div>
+          </div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white shadow-sm border border-slate-100/60 rounded-2xl overflow-hidden"
+          >
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100">
+                <thead className="bg-slate-50/50">
+                  <tr>
+                    <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">ID Dossier</th>
+                    <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Souscripteur (Militaire)</th>
+                    <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Membre Enrôlé (Bénéficiaire)</th>
+                    <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Justificatifs</th>
+                    <th scope="col" className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Statut</th>
+                    <th scope="col" className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Actions & Décisions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-50">
+                  {groupedDossiers.length > 0 ? (
+                    groupedDossiers.map((dossier) => (
+                      <Fragment key={dossier.matricule}>
+                        {/* Subscriber Header Row */}
+                        <tr 
+                          onClick={() => toggleDossier(dossier.matricule)}
+                          className="bg-slate-50/50 hover:bg-slate-100 transition-colors cursor-pointer border-l-4 border-[#008a4b]"
+                        >
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              {expandedDossiers.has(dossier.matricule) ? (
+                                <ChevronDown className="w-4 h-4 text-[#008a4b]" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-gray-400" />
+                              )}
+                              <div className="text-sm font-black text-gray-900 uppercase">
+                                 {dossier.numDossier ? (
+                                    <span className="bg-slate-200 px-2 py-1 rounded border border-slate-300">{dossier.numDossier}</span>
+                                 ) : (
+                                    <span className="text-gray-400 italic text-[10px]">Non attribué</span>
+                                 )}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div>
+                              <div className="text-sm font-black text-gray-900 uppercase flex items-center gap-1.5">
+                                Dossier de 
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); handleOpenMissingPieceModal(req); }}
-                                  className="text-white bg-amber-500 hover:bg-amber-600 p-1.5 rounded-lg shadow-sm transition-all" 
-                                  title="Signaler un document manquant"
+                                  onClick={(e) => { e.stopPropagation(); handleOpenSubscriberInfo(dossier.matricule); }}
+                                  className="text-indigo-600 hover:text-indigo-800 hover:underline transition-colors uppercase font-black tracking-tight focus:outline-none flex items-center gap-1"
+                                  title="Consulter les détails du souscripteur"
                                 >
-                                  <Mail className="w-3.5 h-3.5" />
+                                  {dossier.subscriber}
+                                </button>
+                              </div>
+                              <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                                N° Matricule: {dossier.matricule} • {dossier.requests.length} Membre(s) enrôlé(s)
+                              </div>
+                            </div>
+                          </td>
+                          <td colSpan={4} className="px-6 py-4 text-right">
+                             <div className="flex justify-end items-center gap-3">
+                               <button 
+                                  onClick={(e) => { e.stopPropagation(); handleOpenSubscriberInfo(dossier.matricule); }}
+                                  className="text-[10px] font-black text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 px-3 py-1.5 rounded-full uppercase tracking-tighter shadow-sm transition-colors flex items-center gap-1.5"
+                               >
+                                  <User className="w-3.5 h-3.5" /> Info Souscripteur
+                               </button>
+                               <span className="text-[10px] font-black text-[#008a4b] bg-white border border-[#008a4b]/20 px-3 py-1.5 rounded-full uppercase tracking-tighter shadow-sm transition-transform">
+                                  {expandedDossiers.has(dossier.matricule) ? 'Refermer le dossier' : 'Consulter le dossier complet'}
+                               </span>
+                             </div>
+                          </td>
+                        </tr>
+
+                        {/* Member Rows */}
+                        {expandedDossiers.has(dossier.matricule) && dossier.requests.map((req: any) => (
+                          <tr key={req.id} className="hover:bg-[#008a4b]/5 transition-colors group">
+                            <td className="px-6 py-4 whitespace-nowrap text-[10px] font-black text-gray-400 pl-14">#{req.id}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-0.5">Souscripteur</div>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleOpenSubscriberInfo(req.matricule); }}
+                                className="text-sm font-black text-gray-800 hover:text-indigo-600 hover:underline transition-colors uppercase tracking-tight text-left focus:outline-none flex items-center gap-1"
+                                title="Consulter les détails du souscripteur"
+                              >
+                                <User className="w-3.5 h-3.5 text-gray-400" /> {req.assure}
+                              </button>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-xs font-bold text-[#008a4b] uppercase tracking-widest mb-0.5">{req.lien}</div>
+                              <div className="text-sm font-black text-gray-900 uppercase">{req.membre} {req.prenoms}</div>
+                              <div className="text-[10px] font-bold text-slate-500 mt-1 flex items-center gap-2">
+                                 <Calendar className="w-3 h-3" /> {req.date}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex flex-col gap-1.5">
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); setSelectedRequest(req); }}
+                                  className="text-blue-600 hover:text-blue-800 text-[10px] font-black uppercase flex items-center bg-blue-50/50 hover:bg-blue-100 px-3 py-1 rounded-lg transition-colors border border-blue-100 w-fit"
+                                >
+                                  <FileUp className="w-3 h-3 mr-1.5" /> Justificatif
                                 </button>
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); handleValidate(req.id, 'Validé'); }}
-                                  className="text-white bg-[#008a4b] hover:bg-[#00703c] p-1.5 rounded-lg shadow-sm transition-all" 
-                                  title="Approuver"
+                                  onClick={(e) => { e.stopPropagation(); setSelectedRequest(req); setIsFIFModalOpen(true); }}
+                                  className="text-slate-600 hover:text-slate-800 text-[10px] font-black uppercase flex items-center bg-slate-50/50 hover:bg-slate-100 px-3 py-1 rounded-lg transition-colors border border-slate-100 w-fit"
                                 >
-                                  <CheckCircle className="w-3.5 h-3.5" />
+                                  <FileText className="w-3 h-3 mr-1.5" /> Fiche FIF
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-center">
+                              {req.statut === 'En attente' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200/50 uppercase"><Clock className="w-3 h-3 mr-1" /> {req.statut}</span>}
+                              {req.statut === 'Validé' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-green-50 text-green-700 border border-green-200/50 uppercase"><CheckCircle className="w-3 h-3 mr-1" /> {req.statut}</span>}
+                              {req.statut === 'Rejeté' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-red-50 text-red-700 border border-red-200/50 uppercase"><XCircle className="w-3 h-3 mr-1" /> {req.statut}</span>}
+                              {req.statut === 'Modif. à Valider' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-purple-50 text-purple-700 border border-purple-200/50 uppercase"><RotateCcw className="w-3 h-3 mr-1" /> {req.statut}</span>}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center justify-center gap-2">
+                                {(req.statut === 'En attente' || req.statut === 'Modif. à Valider') && (
+                                  <>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleOpenMissingPieceModal(req); }}
+                                      className="text-white bg-amber-500 hover:bg-amber-600 p-1.5 rounded-lg shadow-sm transition-all" 
+                                      title="Signaler un document manquant"
+                                    >
+                                      <Mail className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleValidate(req.id, 'Validé'); }}
+                                      className="text-white bg-[#008a4b] hover:bg-[#00703c] p-1.5 rounded-lg shadow-sm transition-all" 
+                                      title="Approuver"
+                                    >
+                                      <CheckCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); handleValidate(req.id, 'Rejeté'); }}
+                                      className="text-white bg-red-500 hover:bg-red-600 p-1.5 rounded-lg shadow-sm transition-all" 
+                                      title="Rejeter"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+                                <button 
+                                  onClick={(e) => { e.stopPropagation(); handleOpenEditModal(req); }}
+                                  className="text-slate-500 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition-all"
+                                  title="Modifier"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
                                 </button>
                                 <button 
-                                  onClick={(e) => { e.stopPropagation(); handleValidate(req.id, 'Rejeté'); }}
-                                  className="text-white bg-red-500 hover:bg-red-600 p-1.5 rounded-lg shadow-sm transition-all" 
-                                  title="Rejeter"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }}
+                                  className="text-slate-500 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all"
+                                  title="Supprimer"
                                 >
-                                  <XCircle className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                              </>
-                            )}
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleOpenEditModal(req); }}
-                              className="text-slate-500 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition-all"
-                              title="Modifier"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button 
-                              onClick={(e) => { e.stopPropagation(); handleDeleteRequest(req.id); }}
-                              className="text-slate-500 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </Fragment>
-                ))
-              ) : (
-                <tr>
-                   <td colSpan={6} className="text-center py-12 text-gray-400 font-semibold text-sm">
-                      Aucun dossier d'enrôlement ne correspond à vos critères.
-                   </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </motion.div>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))
+                  ) : (
+                    <tr>
+                       <td colSpan={6} className="text-center py-12 text-gray-400 font-semibold text-sm">
+                          Aucun dossier d'enrôlement ne correspond à vos critères.
+                       </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </motion.div>
+        </>
+      )}
 
       {/* FIF MODAL - FICHE D'INFORMATION DE L'ADHÉRENT SUMMARY */}
       <AnimatePresence>

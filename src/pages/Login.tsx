@@ -16,6 +16,7 @@ export default function Login() {
   
   // Registration fields
   const [name, setName] = useState('');
+  const [prenoms, setPrenoms] = useState('');
   const [matricule, setMatricule] = useState('');
   const [corp, setCorp] = useState('');
   const [phone, setPhone] = useState('');
@@ -72,7 +73,7 @@ export default function Login() {
     e.preventDefault();
     setError('');
 
-    if (!name || !email || !password || !matricule) {
+    if (!name || !prenoms || !email || !password || !matricule) {
       setError('Veuillez remplir tous les champs obligatoires');
       return;
     }
@@ -85,12 +86,14 @@ export default function Login() {
 
     addUser({
       name,
+      prenoms,
       email,
       password,
       matricule,
       corp: corp || 'Non spécifié',
       phone,
-      status: 'Actif'
+      status: 'Actif',
+      statut: 'En attente'
     });
 
     setIsRegistering(false);
@@ -263,18 +266,34 @@ export default function Login() {
                 )}
 
                 <form className="space-y-4" onSubmit={handleRegister}>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Nom complet (Militaire)</label>
-                    <div className="relative">
-                      <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input 
-                        type="text" 
-                        required
-                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#008a4b] outline-none text-sm" 
-                        placeholder="Ex: KABORE Idrissa"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                      />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Nom (Militaire)</label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          required
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#008a4b] outline-none text-sm" 
+                          placeholder="Ex: KABORE"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Prénom(s) (Militaire)</label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input 
+                          type="text" 
+                          required
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#008a4b] outline-none text-sm" 
+                          placeholder="Ex: Idrissa"
+                          value={prenoms}
+                          onChange={(e) => setPrenoms(e.target.value)}
+                        />
+                      </div>
                     </div>
                   </div>
 

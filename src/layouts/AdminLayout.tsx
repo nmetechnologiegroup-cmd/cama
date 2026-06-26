@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Building2, Newspaper, Settings, LogOut, Bell, Globe, ChevronDown, User as UserIcon, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Building2, Newspaper, Settings, LogOut, Bell, Globe, ChevronDown, User as UserIcon, MessageSquare, FolderOpen } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { getSiteSettings, safeStorage } from '../lib/dataStore';
@@ -61,8 +61,8 @@ export default function AdminLayout() {
     { name: 'Tableau de bord', href: '/admin', icon: LayoutDashboard },
     { name: 'Gestion Site Web', href: '/admin/site', icon: Globe },
     { name: 'Messagerie Chat', href: '/admin/chat', icon: MessageSquare },
-    { name: 'Dossiers enrôlement', href: '/admin/dossiers', icon: FileText },
-    { name: 'Assurés & Utilisateurs', href: '/admin/users', icon: Users },
+    { name: 'Dossier Assuré', href: '/admin/dossiers', icon: FolderOpen },
+    { name: 'Utilisateurs', href: '/admin/users', icon: Users },
     { name: 'Centres de santé', href: '/admin/centres', icon: Building2 },
     { name: 'Actualités', href: '/admin/news', icon: Newspaper },
     { name: 'Paramètres', href: '/admin/settings', icon: Settings },

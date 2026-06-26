@@ -3,8 +3,8 @@ import { Search, UserPlus, Filter, Edit2, Trash2, Mail, X, Check, Save, Shield, 
 import { motion, AnimatePresence } from 'motion/react';
 import { getUsers, addUser, editUser, deleteUser, User, getAdminUsers, addAdminUser, editAdminUser, deleteAdminUser, AdminUser, getNotificationTemplates, saveNotificationTemplate, personalizeMessage, NotificationTemplate, getSiteSettings, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
 
-export default function AdminUsers() {
-  const [activeTab, setActiveTab] = useState<'assures' | 'admins' | 'templates'>('assures');
+export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'assures' | 'admins' | 'templates'; hideTabs?: boolean } = {}) {
+  const [activeTab, setActiveTab] = useState<'assures' | 'admins' | 'templates'>(initialTab || 'assures');
   
   // Assurés State
   const [users, setUsers] = useState<User[]>([]);
@@ -78,7 +78,7 @@ export default function AdminUsers() {
     }
   };
 
-  const [statusFilter, setStatusFilter] = useState<'Tous' | 'Actif' | 'Inactif' | 'Modif. à Valider'>('Tous');
+  const [statusFilter, setStatusFilter] = useState<'Tous' | 'Actif' | 'Inactif' | 'Modif. à Valider' | 'En attente'>('Tous');
 
   // Comparison Modal
   const [showComparisonModal, setShowComparisonModal] = useState(false);
@@ -93,7 +93,7 @@ export default function AdminUsers() {
         user.email.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchCorp = corpFilter === 'Tous' || user.corp === corpFilter;
-      const matchStatus = statusFilter === 'Tous' || (statusFilter === 'Modif. à Valider' ? user.statut === 'Modif. à Valider' : user.status === statusFilter);
+      const matchStatus = statusFilter === 'Tous' || (statusFilter === 'Modif. à Valider' ? user.statut === 'Modif. à Valider' : statusFilter === 'En attente' ? user.statut === 'En attente' : user.status === statusFilter);
       
       return matchSearch && matchCorp && matchStatus;
     });
@@ -368,56 +368,88 @@ export default function AdminUsers() {
 
   return (
     <div className="space-y-6 text-left">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Utilisateurs & Privilèges</h2>
-          <p className="text-gray-500 font-medium text-sm mt-1">Supervisez la base des assurés de la Caisse et gérez les comptes administrateurs avec droits d'accès.</p>
+      {!hideTabs ? (
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-extrabold text-gray-900 tracking-tight">Utilisateurs & Privilèges</h2>
+            <p className="text-gray-500 font-medium text-sm mt-1">Supervisez la base des assurés de la Caisse et gérez les comptes administrateurs avec droits d\'accès.</p>
+          </div>
+          
+          {activeTab === 'assures' ? (
+            <button 
+              onClick={handleOpenCreate}
+              className="bg-[#008a4b] text-white px-5 py-2.5 rounded-xl font-bold shadow-md hover:bg-[#00703c] transition-all flex items-center"
+            >
+              <UserPlus className="w-5 h-5 mr-2" />
+              Nouvel Assuré
+            </button>
+          ) : activeTab === 'admins' ? (
+            <button 
+              onClick={handleOpenAdminCreate}
+              className="bg-amber-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-md hover:bg-amber-700 transition-all flex items-center"
+            >
+              <Shield className="w-5 h-5 mr-2" />
+              Créer un Administrateur
+            </button>
+          ) : null}
         </div>
-        
-        {activeTab === 'assures' ? (
-          <button 
-            onClick={handleOpenCreate}
-            className="bg-[#008a4b] text-white px-5 py-2.5 rounded-xl font-bold shadow-md hover:bg-[#00703c] transition-all flex items-center"
-          >
-            <UserPlus className="w-5 h-5 mr-2" />
-            Nouvel Assuré
-          </button>
-        ) : activeTab === 'admins' ? (
-          <button 
-            onClick={handleOpenAdminCreate}
-            className="bg-amber-600 text-white px-5 py-2.5 rounded-xl font-bold shadow-md hover:bg-amber-700 transition-all flex items-center"
-          >
-            <Shield className="w-5 h-5 mr-2" />
-            Créer un Administrateur
-          </button>
-        ) : null}
-      </div>
+      ) : (
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl shadow-sm border border-slate-100/60">
+          <div>
+            <h3 className="text-lg font-black text-gray-900">
+              {activeTab === 'assures' ? "Militaires Assurés" : "Comptes Administrateurs"}
+            </h3>
+            <p className="text-xs text-gray-500 font-medium mt-0.5">
+              {activeTab === 'assures' ? "Gestion de la base de données des assurés titulaires." : "Gestion des rôles et privilèges administratifs."}
+            </p>
+          </div>
+          {activeTab === 'assures' ? (
+            <button 
+              onClick={handleOpenCreate}
+              className="bg-[#008a4b] text-white px-4 py-2.5 rounded-xl font-bold shadow-md hover:bg-[#00703c] text-xs transition-all flex items-center"
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              Nouvel Assuré
+            </button>
+          ) : activeTab === 'admins' ? (
+            <button 
+              onClick={handleOpenAdminCreate}
+              className="bg-amber-600 text-white px-4 py-2.5 rounded-xl font-bold shadow-md hover:bg-amber-700 text-xs transition-all flex items-center"
+            >
+              <Shield className="w-4 h-4 mr-2" />
+              Créer un Administrateur
+            </button>
+          ) : null}
+        </div>
+      )}
 
       {/* Tabs list wrapper */}
-      <div className="flex border-b border-gray-200">
-         <button
-           onClick={async (e) => { setActiveTab('assures'); setSearchQuery(''); }}
-           className={`px-6 py-3.5 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
-             activeTab === 'assures' 
-               ? 'border-[#008a4b] text-[#008a4b] border-b-3' 
-               : 'border-transparent text-gray-500 hover:text-gray-850'
-           }`}
-         >
-           <UsersIcon className="w-4.5 h-4.5" />
-           Base des Assurés ({users.length})
-         </button>
-         <button
-           onClick={async (e) => { setActiveTab('admins'); setSearchQuery(''); }}
-           className={`px-6 py-3.5 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
-             activeTab === 'admins' 
-               ? 'border-amber-600 text-amber-600 border-b-3' 
-               : 'border-transparent text-gray-500 hover:text-gray-850'
-           }`}
-         >
-           <ShieldAlert className="w-4.5 h-4.5 text-amber-550" />
-           Administrateurs & Droits ({admins.length})
-         </button>
-      </div>
+      {!hideTabs && (
+        <div className="flex border-b border-gray-200">
+           <button
+             onClick={async (e) => { setActiveTab('assures'); setSearchQuery(''); }}
+             className={`px-6 py-3.5 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+               activeTab === 'assures' 
+                 ? 'border-[#008a4b] text-[#008a4b] border-b-3' 
+                 : 'border-transparent text-gray-500 hover:text-gray-850'
+             }`}
+           >
+             <UsersIcon className="w-4.5 h-4.5" />
+             Base des Assurés ({users.length})
+           </button>
+           <button
+             onClick={async (e) => { setActiveTab('admins'); setSearchQuery(''); }}
+             className={`px-6 py-3.5 text-sm font-bold border-b-2 transition-all flex items-center gap-2 ${
+               activeTab === 'admins' 
+                 ? 'border-amber-600 text-amber-600 border-b-3' 
+                 : 'border-transparent text-gray-500 hover:text-gray-850'
+             }`}
+           >
+             <ShieldAlert className="w-4.5 h-4.5 text-amber-550" />
+             Administrateurs & Droits ({admins.length})
+           </button>
+        </div>
+      )}
 
       {activeTab === 'assures' ? (
         <motion.div 
@@ -463,6 +495,7 @@ export default function AdminUsers() {
                    <option value="Tous">Tous les statuts</option>
                    <option value="Actif">Comptes Actifs</option>
                    <option value="Inactif">Comptes Inactifs</option>
+                   <option value="En attente">Nouveaux Assurés à Valider</option>
                    <option value="Modif. à Valider">Modifications à Valider</option>
                 </select>
               </div>
@@ -521,6 +554,16 @@ export default function AdminUsers() {
                               MODIF. EN ATTENTE
                             </span>
                           )}
+                          {u.statut === 'En attente' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-700 border border-blue-200 animate-pulse">
+                              NOUVEAU COMPTE
+                            </span>
+                          )}
+                          {u.statut === 'Validé' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-green-100 text-green-700 border border-green-200">
+                              VALIDÉ
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-5 whitespace-nowrap text-right text-sm">
@@ -534,6 +577,25 @@ export default function AdminUsers() {
                             title="Voir et Valider les Modifications"
                           >
                             <ShieldAlert className="w-4 h-4" />
+                          </button>
+                        )}
+                        {u.statut === 'En attente' && (
+                          <button 
+                            onClick={async (e) => {
+                              if (confirm(`Voulez-vous valider le compte assuré de ${u.name} ${u.prenoms || ''} ?`)) {
+                                const updatedUser = {
+                                  ...u,
+                                  statut: 'Validé'
+                                };
+                                const res = await editUser(updatedUser);
+                                setUsers(res);
+                                alert(`Le compte de ${u.name} a été validé avec succès.`);
+                              }
+                            }}
+                            className="text-green-600 bg-green-50 hover:bg-green-100 p-2 rounded-lg transition-colors mx-1 font-bold animate-bounce" 
+                            title="Valider le Nouveau Compte"
+                          >
+                            <Check className="w-4 h-4" />
                           </button>
                         )}
                         <button 

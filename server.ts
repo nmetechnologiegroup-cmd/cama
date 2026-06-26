@@ -6,12 +6,23 @@ import Database from 'better-sqlite3';
 import mysql from 'mysql2/promise';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+
+  const ai = process.env.GEMINI_API_KEY
+    ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
+    : null;
+
+  if (ai) {
+    console.log("Gemini API initialized successfully in backend.");
+  } else {
+    console.log("No GEMINI_API_KEY found, chatbot will use static intelligent fallbacks.");
+  }
 
   const safeParse = (val: any, fallback: any = []) => {
     if (val === undefined || val === null) return fallback;
@@ -226,6 +237,43 @@ async function startServer() {
       }
     };
     await alterColumns();
+
+    // Ensure columns exist in users table
+    const alterUserColumns = async () => {
+      const userCols = [
+        { name: 'statut', type: "VARCHAR(50) DEFAULT 'En attente'" },
+        { name: 'pending_modifications', type: mysqlPool ? 'LONGTEXT' : 'TEXT' },
+        { name: 'modification_traces', type: mysqlPool ? 'LONGTEXT' : 'TEXT' }
+      ];
+      
+      for (const col of userCols) {
+        try {
+          if (mysqlPool) {
+            const [check] = await mysqlPool.execute(
+              `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+               WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = ?`,
+              [col.name]
+            );
+            if ((check as any[]).length === 0) {
+              await mysqlPool.execute(`ALTER TABLE users ADD COLUMN ${col.name} ${col.type}`);
+              console.log(`Added column ${col.name} to users table in MariaDB`);
+            }
+          } else {
+            try {
+              sqliteDb.prepare(`ALTER TABLE users ADD COLUMN ${col.name} ${col.type}`).run();
+              console.log(`Added column ${col.name} to users table in SQLite`);
+            } catch (err: any) {
+              if (!err.message.includes('duplicate column name')) {
+                throw err;
+              }
+            }
+          }
+        } catch (e: any) {
+          console.error(`Error altering users table for column ${col.name}:`, e.message);
+        }
+      }
+    };
+    await alterUserColumns();
   } catch (error) {
     console.error("Erreur lors de la vérification/initialisation de la BDD:", error);
   }
@@ -235,10 +283,45 @@ async function startServer() {
   // ==========================================
 
   // 1. UTILISATEURS (Militaires)
+  const mapUserRow = (r: any) => {
+    if (!r) return null;
+    return {
+      id: r.id,
+      name: r.name,
+      matricule: r.matricule,
+      corp: r.corp,
+      email: r.email,
+      password: r.password,
+      status: r.status,
+      phone: r.phone,
+      address: r.address,
+      prenoms: r.prenoms,
+      sexe: r.sexe,
+      numInformatique: r.num_informatique,
+      grade: r.grade,
+      categorie: r.categorie,
+      numCim: r.num_cim,
+      numCarteCama: r.num_carte_cama,
+      numIup: r.num_iup,
+      structArmee: r.struct_armee,
+      structRegion: r.struct_region,
+      structCorps: r.struct_corps,
+      structService: r.struct_service,
+      structSection: r.struct_section,
+      structSousSection: r.struct_sous_section,
+      telephones: r.telephones,
+      personneAPrevenir: r.personne_a_prevenir,
+      personneAPrevenirTel: r.personne_a_prevenir_tel,
+      statut: r.statut || 'En attente',
+      pendingModifications: safeParse(r.pending_modifications, {}),
+      modificationTraces: safeParse(r.modification_traces, [])
+    };
+  };
+
   app.get('/api/users', async (req, res) => {
     try {
       const users = await dbAll('SELECT * FROM users');
-      res.json(users);
+      res.json(users.map(mapUserRow));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -248,7 +331,7 @@ async function startServer() {
     try {
       const user = await dbGet('SELECT * FROM users WHERE id = ?', [req.params.id]);
       if (!user) return res.status(404).json({ error: 'Utilisateur non trouvé' });
-      res.json(user);
+      res.json(mapUserRow(user));
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -258,14 +341,35 @@ async function startServer() {
     const u = req.body;
     try {
       const sql = `
-        INSERT INTO users (name, matricule, corp, email, password, status, phone, address, prenoms, sexe, num_informatique, grade, categorie, num_cim, num_carte_cama, num_iup, struct_armee, struct_region, struct_corps, struct_service, struct_section, struct_sous_section, telephones, personne_a_prevenir, personne_a_prevenir_tel)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO users (
+          name, matricule, corp, email, password, status, phone, address, prenoms, sexe, 
+          num_informatique, grade, categorie, num_cim, num_carte_cama, num_iup, 
+          struct_armee, struct_region, struct_corps, struct_service, struct_section, struct_sous_section, 
+          telephones, personne_a_prevenir, personne_a_prevenir_tel, 
+          statut, pending_modifications, modification_traces
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const params = [
         u.name, u.matricule, u.corp, u.email, u.password || 'password123', u.status || 'Actif',
-        u.phone, u.address, u.prenoms, u.sexe || 'M', u.num_informatique, u.grade, u.categorie,
-        u.num_cim, u.num_carte_cama, u.num_iup, u.struct_armee, u.struct_region, u.struct_corps,
-        u.struct_service, u.struct_section, u.struct_sous_section, u.telephones, u.personne_a_prevenir, u.personne_a_prevenir_tel
+        u.phone, u.address, u.prenoms, u.sexe || 'M',
+        u.numInformatique !== undefined ? u.numInformatique : u.num_informatique,
+        u.grade, u.categorie,
+        u.numCim !== undefined ? u.numCim : u.num_cim,
+        u.numCarteCama !== undefined ? u.numCarteCama : u.num_carte_cama,
+        u.numIup !== undefined ? u.numIup : u.num_iup,
+        u.structArmee !== undefined ? u.structArmee : u.struct_armee,
+        u.structRegion !== undefined ? u.structRegion : u.struct_region,
+        u.structCorps !== undefined ? u.structCorps : u.struct_corps,
+        u.structService !== undefined ? u.structService : u.struct_service,
+        u.structSection !== undefined ? u.structSection : u.struct_section,
+        u.structSousSection !== undefined ? u.structSousSection : u.struct_sous_section,
+        u.telephones,
+        u.personneAPrevenir !== undefined ? u.personneAPrevenir : u.personne_a_prevenir,
+        u.personneAPrevenirTel !== undefined ? u.personneAPrevenirTel : u.personne_a_prevenir_tel,
+        u.statut || 'En attente',
+        JSON.stringify(u.pendingModifications || {}),
+        JSON.stringify(u.modificationTraces || [])
       ];
       const result = await dbRun(sql, params);
       res.status(201).json({ id: result.id, message: 'Utilisateur créé avec succès.' });
@@ -282,14 +386,30 @@ async function startServer() {
           name = ?, corp = ?, email = ?, status = ?, phone = ?, address = ?, prenoms = ?, sexe = ?,
           num_informatique = ?, grade = ?, categorie = ?, num_cim = ?, num_carte_cama = ?, num_iup = ?,
           struct_armee = ?, struct_region = ?, struct_corps = ?, struct_service = ?, struct_section = ?, struct_sous_section = ?,
-          telephones = ?, personne_a_prevenir = ?, personne_a_prevenir_tel = ?
+          telephones = ?, personne_a_prevenir = ?, personne_a_prevenir_tel = ?,
+          statut = ?, pending_modifications = ?, modification_traces = ?
         WHERE id = ?
       `;
       const params = [
         u.name, u.corp, u.email, u.status, u.phone, u.address, u.prenoms, u.sexe,
-        u.num_informatique, u.grade, u.categorie, u.num_cim, u.num_carte_cama, u.num_iup,
-        u.struct_armee, u.struct_region, u.struct_corps, u.struct_service, u.struct_section, u.struct_sous_section,
-        u.telephones, u.personne_a_prevenir, u.personne_a_prevenir_tel, req.params.id
+        u.numInformatique !== undefined ? u.numInformatique : u.num_informatique,
+        u.grade, u.categorie,
+        u.numCim !== undefined ? u.numCim : u.num_cim,
+        u.numCarteCama !== undefined ? u.numCarteCama : u.num_carte_cama,
+        u.numIup !== undefined ? u.numIup : u.num_iup,
+        u.structArmee !== undefined ? u.structArmee : u.struct_armee,
+        u.structRegion !== undefined ? u.structRegion : u.struct_region,
+        u.structCorps !== undefined ? u.structCorps : u.struct_corps,
+        u.structService !== undefined ? u.structService : u.struct_service,
+        u.structSection !== undefined ? u.structSection : u.struct_section,
+        u.structSousSection !== undefined ? u.structSousSection : u.struct_sous_section,
+        u.telephones,
+        u.personneAPrevenir !== undefined ? u.personneAPrevenir : u.personne_a_prevenir,
+        u.personneAPrevenirTel !== undefined ? u.personneAPrevenirTel : u.personne_a_prevenir_tel,
+        u.statut,
+        u.pendingModifications !== undefined ? (typeof u.pendingModifications === 'string' ? u.pendingModifications : JSON.stringify(u.pendingModifications)) : null,
+        u.modificationTraces !== undefined ? (typeof u.modificationTraces === 'string' ? u.modificationTraces : JSON.stringify(u.modificationTraces)) : null,
+        req.params.id
       ];
       await dbRun(sql, params);
       res.json({ message: 'Utilisateur mis à jour avec succès.' });
@@ -341,6 +461,45 @@ async function startServer() {
         emailNotificationSent: Boolean(r.email_notification_sent)
       }));
       res.json(mapped);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/requests/:id', async (req, res) => {
+    try {
+      const r = await dbGet('SELECT * FROM requests WHERE id = ?', [req.params.id]);
+      if (!r) {
+        return res.status(404).json({ error: 'Request not found' });
+      }
+      res.json({
+        id: r.id,
+        assure: r.assure,
+        matricule: r.matricule,
+        membre: r.membre,
+        prenoms: r.prenoms,
+        sexe: r.sexe,
+        dateNaissance: r.date_naissance,
+        lieuNaissance: r.lieu_naissance,
+        gs: r.gs,
+        refIdentityDoc: r.ref_identity_doc,
+        refMarriageCertificate: r.ref_marriage_certificate,
+        refScolariteDoc: r.ref_scolarite_doc,
+        motherName: r.mother_name,
+        profession: r.profession,
+        residence: r.residence,
+        telephone: r.telephone,
+        lien: r.lien,
+        date: r.date,
+        statut: r.statut,
+        numInformatique: r.num_informatique,
+        numCama: r.num_cama,
+        justificatif: r.justificatif,
+        rejectionReason: r.rejection_reason,
+        documentImage: r.document_image,
+        userId: r.user_id,
+        emailNotificationSent: Boolean(r.email_notification_sent)
+      });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
@@ -771,6 +930,48 @@ async function startServer() {
       );
       const newId = mysqlPool ? (result as any).insertId : result;
       const msg = await dbGet("SELECT * FROM chat_messages WHERE id = ?", [newId]);
+
+      // Server-side co-pilot reply: if the user sends a message, have the AI instantly reply as "conseiller" inside the database!
+      if (sender === 'user') {
+        setTimeout(async () => {
+          try {
+            // Fetch previous discussion messages for context
+            const previousMsgs = await dbAll("SELECT * FROM chat_messages WHERE discussion_id = ? ORDER BY id ASC", [discussionId]);
+            let replyText = "Je vous prie de m'excuser, notre équipe de conseillers est en cours d'intervention. Que puis-je faire pour vous aider en attendant ?";
+            
+            if (ai) {
+              const chatPrompt = previousMsgs.slice(-10).map((m: any) => `${m.sender === 'user' ? 'Utilisateur' : 'Conseiller'}: ${m.text}`).join('\n');
+              const systemInstruction = "Vous êtes le conseiller de la CAMA (Caisse d'Assurance Maladie des Armées du Burkina Faso). Répondez de manière claire, concise, structurée et chaleureuse. Rappelez les règles du workflow : s'inscrire, remplir son profil militaire, attendre la validation admin, puis une fois Validé, l'assuré peut ajouter des membres de sa famille (FIF). Ne dépassez pas 3-4 phrases par réponse.";
+              const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: chatPrompt + "\nConseiller:",
+                config: { systemInstruction }
+              });
+              if (response.text) {
+                replyText = response.text;
+              }
+            } else {
+              // Static intelligent fallback
+              const textLower = text.toLowerCase();
+              if (textLower.includes('workflow') || textLower.includes('comment') || textLower.includes('etape') || textLower.includes('étape') || textLower.includes('processus') || textLower.includes('marche')) {
+                replyText = "Le processus de la CAMA est simple : 1. Création de votre compte avec votre matricule solde. 2. Saisie et complétion de vos informations de profil. 3. Validation par l'administrateur. **Vous ne pourrez ajouter aucun membre tant que l'administration ne vous aura pas validé.** 4. Enrôlement de vos membres (conjoint/enfants) via le bouton vert 'Nouveau membre (FIF)'.";
+              } else if (textLower.includes('membre') || textLower.includes('ajouter') || textLower.includes('famille') || textLower.includes('fif') || textLower.includes('conjoint') || textLower.includes('enfant')) {
+                replyText = "Pour ajouter un membre (FIF), votre compte militaire doit être au statut **'Validé'** par l'administrateur. Ensuite, cliquez sur 'Nouveau membre (FIF)' sur votre tableau de bord, renseignez les informations civiles et déposez l'acte de naissance ou de mariage.";
+              } else if (textLower.includes('valider') || textLower.includes('validation') || textLower.includes('en attente')) {
+                replyText = "Si votre dossier est 'En attente' ou 'Modifications à Valider', l'administration CAMA doit d'abord vérifier et approuver vos informations avant de vous donner accès à l'enrôlement des membres de votre famille.";
+              }
+            }
+
+            await dbRun(
+              "INSERT INTO chat_messages (discussion_id, sender, text, created_at) VALUES (?, 'conseiller', ?, ?)",
+              [discussionId, replyText, new Date().toISOString()]
+            );
+          } catch (aiErr: any) {
+            console.error("Error generating instant database co-pilot reply:", aiErr.message);
+          }
+        }, 1500);
+      }
+
       res.json(msg);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -815,6 +1016,59 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // 5. CHAT AI ASSISTANT ENDPOINT
+  app.post('/api/chat/ai', async (req, res) => {
+    const { messages } = req.body;
+    if (!messages || !Array.isArray(messages)) {
+      return res.status(400).json({ error: "messages est requis" });
+    }
+
+    const lastUserMessage = messages.filter((m: any) => m.sender === 'user').pop()?.text || "";
+
+    if (ai) {
+      try {
+        // Prepare context
+        const chatPrompt = messages.slice(-10).map((m: any) => `${m.sender === 'user' ? 'Utilisateur' : 'Conseiller'}: ${m.text}`).join('\n');
+        const systemInstruction = "Vous êtes le conseiller virtuel intelligent de la CAMA (Caisse d'Assurance Maladie des Armées du Burkina Faso). Répondez de manière claire, concise, structurée et chaleureuse aux préoccupations de l'assuré ou du visiteur. Rappelez les règles du workflow : s'inscrire, remplir son profil militaire, attendre la validation admin, puis une fois Validé, l'assuré peut ajouter des membres de famille (FIF). Ne dépassez pas 3-4 phrases par réponse.";
+        
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: chatPrompt + "\nConseiller:",
+          config: {
+            systemInstruction
+          }
+        });
+
+        const reply = response.text || "Je suis à votre entière disposition pour vous guider.";
+        return res.json({ reply });
+      } catch (geminiErr: any) {
+        console.error("Gemini API Error, falling back to static logic:", geminiErr.message);
+      }
+    }
+
+    // Static intelligent fallback
+    const text = lastUserMessage.toLowerCase();
+    let reply = "Bonjour! Je suis le conseiller virtuel de la CAMA. Comment puis-je vous aider aujourd'hui ?";
+
+    if (text.includes('workflow') || text.includes('comment') || text.includes('etape') || text.includes('étape') || text.includes('processus') || text.includes('marche') || text.includes('créer') || text.includes('creer')) {
+      reply = "Voici le processus complet de la CAMA :\n\n1. **Création du Compte** : Le militaire s'inscrit en saisissant son matricule solde, son nom, ses prénoms, son email et son corps d'armée.\n2. **Saisie du Profil** : Il se connecte et complète ses données (N° IUP, CIM, grade, affectation, etc.).\n3. **Validation Administrative** : Un administrateur examine et valide son dossier militaire. **Tant que cette étape n'est pas validée, il ne peut pas enrôler de membre.**\n4. **Ajout de Membre** : Une fois validé, il clique sur 'Nouveau membre (FIF)' pour enrôler ses bénéficiaires (conjoint, enfants) et télécharge les pièces justificatives.";
+    } else if (text.includes('membre') || text.includes('ajouter') || text.includes('famille') || text.includes('fif') || text.includes('enfant') || text.includes('conjoint')) {
+      reply = "Pour ajouter un membre de votre famille (FIF) :\n\n- Assurez-vous d'abord que votre profil militaire a été entièrement complété et **Validé** par un administrateur.\n- Rendez-vous sur votre tableau de bord et cliquez sur le bouton vert **'Nouveau membre (FIF)'**.\n- Renseignez les informations civiles et téléchargez les pièces justificatives (acte de naissance, acte de mariage, photo d'identité).\n- Un gestionnaire CAMA validera ensuite la demande d'enrôlement pour émettre sa carte d'assurance.";
+    } else if (text.includes('validation') || text.includes('validé') || text.includes('valide') || text.includes('en attente') || text.includes('statut')) {
+      reply = "Votre statut d'enrôlement détermine vos actions :\n\n- **En attente (Nouveau compte)** : Vous venez de vous inscrire. Veuillez compléter votre profil militaire pour que l'administrateur puisse le valider.\n- **Modifications à Valider** : Vous avez soumis des corrections. L'administration doit les approuver.\n- **Validé** : Votre profil est actif et vous pouvez maintenant ajouter vos membres à charge (conjoint/enfants).\n- **Rejeté** : Veuillez vérifier vos informations de profil et soumettre à nouveau.";
+    } else if (text.includes('contact') || text.includes('adresse') || text.includes('telephone') || text.includes('téléphone') || text.includes('mail') || text.includes('support')) {
+      reply = "Vous pouvez contacter l'assistance de la CAMA par email à **support@sappay.net** ou vous rendre au secrétariat de la direction générale de la CAMA pour toute question relative à vos dossiers physiques.";
+    } else if (text.includes('bonjour') || text.includes('salut') || text.includes('hello')) {
+      reply = "Bonjour ! Je suis le conseiller virtuel de la CAMA. Je suis là pour vous aider dans vos démarches d'enrôlement ou d'accès à vos prestations de santé.";
+    } else if (text.includes('merci') || text.includes('parfait') || text.includes('ok')) {
+      reply = "Je vous en prie ! N'hésitez pas si vous avez d'autres questions sur vos dossiers de prise en charge ou d'enrôlement.";
+    } else {
+      reply = "J'ai bien pris note de votre message concernant l'assurance maladie des armées (CAMA). Pourriez-vous préciser si votre demande concerne l'inscription initiale, la validation de votre profil militaire, ou l'enrôlement d'un membre de famille (FIF) ?";
+    }
+
+    res.json({ reply });
   });
 
   const HARDCODED_SUPER_ADMINS = [

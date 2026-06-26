@@ -225,31 +225,56 @@ export default function MainLayout() {
 
     setIsTyping(true);
 
-    // Simulate bot reply
-    setTimeout(() => {
-      let botReplyText = "Merci pour votre message. Un conseiller de la Caisse d'Assurance Maladie des Armées (CAMA) va prendre en charge votre demande sous peu. Pour un contact direct, vous pouvez également utiliser notre ligne verte ou le bouton WhatsApp.";
-      
-      const lowerText = textToSend.toLowerCase();
-      if (lowerText.includes('enrôl') || lowerText.includes('enrol')) {
-        botReplyText = faqQuestions[0].a;
-      } else if (lowerText.includes('rembours') || lowerText.includes('dossier') || lowerText.includes('suivi')) {
-        botReplyText = faqQuestions[1].a;
-      } else if (lowerText.includes('clinique') || lowerText.includes('centre') || lowerText.includes('pharmacie') || lowerText.includes('réseau')) {
-        botReplyText = faqQuestions[2].a;
-      } else if (lowerText.includes('couverture') || lowerText.includes('taux') || lowerText.includes('prise')) {
-        botReplyText = faqQuestions[3].a;
-      }
+    const historyForAi = [...chatMessages, newUserMsg].map(m => ({
+      sender: m.sender,
+      text: m.text
+    }));
 
-      const newBotMsg: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        sender: 'bot',
-        text: botReplyText,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-
-      setChatMessages(prev => [...prev, newBotMsg]);
-      setIsTyping(false);
-    }, 1000);
+    // Fetch dynamic AI reply from server with local static fallbacks built-in
+    fetch('/api/chat/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: historyForAi })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("Server error");
+        return res.json();
+      })
+      .then(data => {
+        const newBotMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'bot',
+          text: data.reply || "Je suis à votre disposition pour vous orienter.",
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages(prev => [...prev, newBotMsg]);
+      })
+      .catch(err => {
+        console.error("AI chat error:", err);
+        // Static fallback
+        let botReplyText = "Merci pour votre message. Un conseiller de la Caisse d'Assurance Maladie des Armées (CAMA) va prendre en charge votre demande sous peu.";
+        const lowerText = textToSend.toLowerCase();
+        if (lowerText.includes('enrôl') || lowerText.includes('enrol')) {
+          botReplyText = faqQuestions[0].a;
+        } else if (lowerText.includes('rembours') || lowerText.includes('dossier') || lowerText.includes('suivi')) {
+          botReplyText = faqQuestions[1].a;
+        } else if (lowerText.includes('clinique') || lowerText.includes('centre') || lowerText.includes('pharmacie') || lowerText.includes('réseau')) {
+          botReplyText = faqQuestions[2].a;
+        } else if (lowerText.includes('couverture') || lowerText.includes('taux') || lowerText.includes('prise')) {
+          botReplyText = faqQuestions[3].a;
+        }
+        
+        const newBotMsg: ChatMessage = {
+          id: (Date.now() + 1).toString(),
+          sender: 'bot',
+          text: botReplyText,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setChatMessages(prev => [...prev, newBotMsg]);
+      })
+      .finally(() => {
+        setIsTyping(false);
+      });
   };
 
   // Generate Whatsapp redirect link
