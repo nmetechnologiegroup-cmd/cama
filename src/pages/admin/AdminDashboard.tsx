@@ -188,7 +188,7 @@ export default function AdminDashboard() {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100/60 p-6 flex flex-col justify-between">
           <div>
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold text-gray-900 border-l-4 border-[#008a4b] pl-3">Derniers enrôlements</h3>
+              <h3 className="text-xl font-bold text-gray-900 border-l-4 border-[#008a4b] pl-3">Dossiers d'Enrôlement Récents</h3>
               <span className="text-xs font-extrabold text-gray-400">INDEX DE SUIVI</span>
             </div>
             <div className="space-y-5">

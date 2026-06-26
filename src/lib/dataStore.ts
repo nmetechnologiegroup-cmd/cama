@@ -272,6 +272,7 @@ export interface SiteWebSettings {
     address: string;
     phone: string;
     email: string;
+    whatsapp?: string;
     description?: string;
     badgeText?: string;
   };
@@ -358,7 +359,8 @@ export const DEFAULT_SITE_SETTINGS: SiteWebSettings = {
     contactTitle: "Contactez-nous",
     address: "Camp Guillaume Ouédraogo",
     phone: "+226 25 00 00 00",
-    email: "contact@cama.bf"
+    email: "contact@cama.bf",
+    whatsapp: "+226 70 00 11 22"
   }
 };
 

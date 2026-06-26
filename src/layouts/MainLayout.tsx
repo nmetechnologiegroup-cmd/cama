@@ -65,7 +65,12 @@ export default function MainLayout() {
 
   // Load site settings with forceRefresh=true so changes in the admin panel are immediately retrieved
   useEffect(() => {
-    getSiteSettings(true).then(setSettings).catch(console.error);
+    getSiteSettings(true).then(res => {
+      setSettings(res);
+      if (res?.footer?.whatsapp) {
+        setWhatsappPhone(res.footer.whatsapp);
+      }
+    }).catch(console.error);
   }, []);
 
   // Check if direct advisor mode is active and within availability hours (robust, locale-independent, time format safe)

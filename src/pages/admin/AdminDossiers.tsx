@@ -46,6 +46,22 @@ import {
   getUsers
 } from '../../lib/dataStore';
 
+const isPdf = (src: string | null | undefined): boolean => {
+  return typeof src === 'string' && src.startsWith('data:application/pdf');
+};
+
+const getFilesList = (val: string | null | undefined): string[] => {
+  if (!val) return [];
+  if (val.startsWith('[') && val.endsWith(']')) {
+    try {
+      return JSON.parse(val);
+    } catch (e) {
+      return [val];
+    }
+  }
+  return [val];
+};
+
 export default function AdminDossiers() {
   const [activePageTab, setActivePageTab] = useState<'requests' | 'assures'>('assures');
   const [requests, setRequests] = useState<Request[]>([]);
@@ -518,6 +534,14 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
       return;
     }
 
+    if (formTelephone) {
+      const phoneRegex = /^\+?[0-9\s\-()]{8,20}$/;
+      if (!phoneRegex.test(formTelephone)) {
+        setFormError("Erreur : Le numéro de téléphone de contact n'est pas valide (minimum 8 chiffres, ex: +226 70 00 11 22).");
+        return;
+      }
+    }
+
     if (editingRequest) {
       // Trace calculation
       const newValues: any = {
@@ -649,22 +673,11 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-200/60 pb-4">
         <div>
           <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">Dossiers & Assurés</h2>
-          <p className="text-slate-500 font-medium text-xs mt-1">Gérez et validez les demandes d'enrôlement ou consultez la base officielle des assurés de la Caisse.</p>
+          <p className="text-slate-500 font-medium text-xs mt-1">Gérez et validez les dossiers d'enrôlement ou consultez la base officielle des assurés de la Caisse.</p>
         </div>
 
         {/* Tab switcher */}
         <div className="flex bg-slate-200/60 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/40">
-          <button
-            onClick={() => { setActivePageTab('requests'); setSearchQuery(''); }}
-            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
-              activePageTab === 'requests'
-                ? 'bg-white text-[#008a4b] shadow-sm'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <ClipboardList className="w-4 h-4" />
-            Demandes d'enrôlement ({requests.length})
-          </button>
           <button
             onClick={() => { setActivePageTab('assures'); setSearchQuery(''); }}
             className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
@@ -675,6 +688,17 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
           >
             <Users className="w-4 h-4" />
             Base des Assurés ({users.length})
+          </button>
+          <button
+            onClick={() => { setActivePageTab('requests'); setSearchQuery(''); }}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2 cursor-pointer ${
+              activePageTab === 'requests'
+                ? 'bg-white text-[#008a4b] shadow-sm'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Dossiers d'Enrôlement ({requests.length})
           </button>
         </div>
       </div>
@@ -1178,15 +1202,42 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                 {/* Document display supports simulated standard document AND real custom uploaded image Base64 */}
                 <div className="p-8 bg-amber-50/10 flex justify-center text-gray-800 relative select-none overflow-y-auto flex-1 custom-scrollbar">
                   { (selectedRequest.justificatif || selectedRequest.documentImage) ? (
-                    <div className="flex flex-col items-center justify-center space-y-4 w-full">
-                      <img 
-                        src={selectedRequest.justificatif || selectedRequest.documentImage} 
-                        alt="Acte État Civil" 
-                        className="max-h-[550px] w-auto max-w-full rounded-lg object-contain border border-zinc-700 shadow-xl"
-                        referrerPolicy="no-referrer"
-                      />
+                    <div className="flex flex-col items-center justify-center space-y-6 w-full py-4">
+                      {getFilesList(selectedRequest.justificatif || selectedRequest.documentImage).map((fileSrc, idx) => {
+                        const fileIsPdf = isPdf(fileSrc);
+                        return (
+                          <div key={idx} className="flex flex-col items-center max-w-full">
+                            {fileIsPdf ? (
+                              <div className="flex flex-col items-center justify-center p-8 bg-zinc-800 border border-zinc-750 rounded-xl max-w-md text-center shadow-lg">
+                                <FileText className="w-16 h-16 text-red-500 mb-4" />
+                                <h5 className="text-sm font-bold text-white uppercase tracking-wider mb-1">Fichier PDF Justificatif</h5>
+                                <p className="text-xs text-zinc-400 mb-4">Document d'acte de naissance / mariage téléversé par l'assuré.</p>
+                                <a 
+                                  href={fileSrc} 
+                                  download={`Justificatif_${selectedRequest.id || 'dossier'}_${idx + 1}.pdf`}
+                                  className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs uppercase tracking-wider transition shadow-md"
+                                >
+                                  Télécharger / Visualiser le PDF
+                                </a>
+                              </div>
+                            ) : (
+                              <img 
+                                src={fileSrc} 
+                                alt={`Acte État Civil ${idx + 1}`} 
+                                className="max-h-[550px] w-auto max-w-full rounded-lg object-contain border border-zinc-700 shadow-xl"
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
+                            {getFilesList(selectedRequest.justificatif || selectedRequest.documentImage).length > 1 && (
+                              <span className="text-[10px] text-zinc-400 bg-black/60 px-2.5 py-0.5 rounded-full mt-2 font-bold uppercase tracking-wider">
+                                Document {idx + 1} sur {getFilesList(selectedRequest.justificatif || selectedRequest.documentImage).length}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                       <span className="text-xs text-white/50 bg-black/30 px-3 py-1 rounded-full font-bold">
-                        {selectedRequest.justificatif ? "Pièce téléversée par le souscripteur" : "Pièce téléversée par l'administration"}
+                        {selectedRequest.justificatif ? "Pièce(s) téléversée(s) par le souscripteur" : "Pièce téléversée par l'administration"}
                       </span>
                     </div>
                   ) : (
@@ -1422,18 +1473,23 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                              type="text" 
                              value={formMotherName}
                              onChange={(e) => setFormMotherName(e.target.value)}
-                             placeholder="Nom complet"
+                             placeholder="Nom & Prénom(s)"
                              className="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#008a4b]/20 focus:border-[#008a4b] font-bold text-sm"
                            />
                         </div>
                         <div>
                            <label className="block text-[10px] font-black text-gray-700 uppercase mb-1">Téléphone</label>
                            <input 
-                             type="text" 
+                             type="tel" 
                              value={formTelephone}
-                             onChange={(e) => setFormTelephone(e.target.value)}
-                             placeholder="Ex: 70 00 00 00"
-                             className="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#008a4b]/20 focus:border-[#008a4b] font-bold text-sm"
+                             onChange={(e) => {
+                               const val = e.target.value;
+                               if (/^[0-9\s+\-()]*$/.test(val)) {
+                                 setFormTelephone(val);
+                               }
+                             }}
+                             placeholder="Ex: +226 70 00 11 22"
+                             className="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-[#008a4b]/20 focus:border-[#008a4b] font-bold text-sm font-mono"
                            />
                         </div>
                         <div className="lg:col-span-2">

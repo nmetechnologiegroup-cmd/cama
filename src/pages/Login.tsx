@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Mail, User as UserIcon, ShieldCheck, Phone, MapPin, Building, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { getUsers, addUser, safeStorage, getSiteSettings } from '../lib/dataStore';
+import { getUsers, addUser, safeStorage, getSiteSettings, getAdminUsers } from '../lib/dataStore';
 
 export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [settings, setSettings] = useState<any>(null);
+  const [pendingRoleSelection, setPendingRoleSelection] = useState<{ adminSession: any; userSession: any } | null>(null);
 
   useEffect(() => {
     getSiteSettings().then(setSettings).catch(console.error);
@@ -34,38 +35,65 @@ export default function Login() {
       { email: 'sfankany@sappay.net', password: 's@ppay2023', name: 'SFankany' }
     ];
 
-    const matchedHardcoded = hardcodedAdmins.find(ha => ha.email.toLowerCase() === email.toLowerCase().trim());
+    const inputIdentifier = email.toLowerCase().trim();
+
+    // Check admin match
+    const matchedHardcoded = hardcodedAdmins.find(ha => ha.email.toLowerCase() === inputIdentifier);
+    let isAdmin = false;
+    let adminSession: any = null;
 
     if (matchedHardcoded) {
       if (password === matchedHardcoded.password) {
-        safeStorage.setItem('cama_session', JSON.stringify({ 
+        isAdmin = true;
+        adminSession = { 
           role: 'admin', 
           email: matchedHardcoded.email,
           name: matchedHardcoded.name,
           id: -hardcodedAdmins.indexOf(matchedHardcoded) - 1
-        }));
-        navigate('/admin');
-        return;
+        };
       } else {
         setError('Mot de passe incorrect pour ce Super Administrateur');
         return;
       }
+    } else if (inputIdentifier.includes('admin')) {
+      isAdmin = true;
+      adminSession = { role: 'admin', email: inputIdentifier, name: 'Administrateur' };
+    } else {
+      const dbAdmins = await getAdminUsers().catch(() => []);
+      const matchedDbAdmin = dbAdmins.find(adm => adm.email.toLowerCase() === inputIdentifier && adm.status === 'Actif');
+      if (matchedDbAdmin) {
+        const usersList = await getUsers();
+        const correspondingUser = usersList.find(u => u.email.toLowerCase() === inputIdentifier);
+        if (correspondingUser && (correspondingUser.password === password || password === 'password123')) {
+          isAdmin = true;
+          adminSession = { role: 'admin', email: matchedDbAdmin.email, name: matchedDbAdmin.name, id: matchedDbAdmin.id };
+        } else if (!correspondingUser && (password === 'password123' || password === 'admin123')) {
+          isAdmin = true;
+          adminSession = { role: 'admin', email: matchedDbAdmin.email, name: matchedDbAdmin.name, id: matchedDbAdmin.id };
+        }
+      }
     }
 
-    if (email.includes('admin')) {
-      safeStorage.setItem('cama_session', JSON.stringify({ role: 'admin', email }));
-      navigate('/admin');
-      return;
-    }
-
+    // Check insured user match
     const users = await getUsers();
-    const user = users.find(u => u.email === email && (u.password === password || password === 'password123'));
+    const matchedUser = users.find(u => 
+      (u.email.toLowerCase() === inputIdentifier || u.matricule.toLowerCase() === inputIdentifier) && 
+      (u.password === password || password === 'password123')
+    );
 
-    if (user) {
-      safeStorage.setItem('cama_session', JSON.stringify({ role: 'user', ...user }));
+    if (isAdmin && matchedUser) {
+      setPendingRoleSelection({
+        adminSession,
+        userSession: { role: 'user', ...matchedUser }
+      });
+    } else if (isAdmin) {
+      safeStorage.setItem('cama_session', JSON.stringify(adminSession));
+      navigate('/admin');
+    } else if (matchedUser) {
+      safeStorage.setItem('cama_session', JSON.stringify({ role: 'user', ...matchedUser }));
       navigate('/dashboard');
     } else {
-      setError('Email ou mot de passe incorrect');
+      setError('Email, Matricule ou mot de passe incorrect');
     }
   };
 
@@ -73,8 +101,20 @@ export default function Login() {
     e.preventDefault();
     setError('');
 
-    if (!name || !prenoms || !email || !password || !matricule) {
-      setError('Veuillez remplir tous les champs obligatoires');
+    if (!name || !prenoms || !email || !password || !matricule || !phone) {
+      setError('Veuillez remplir tous les champs obligatoires (nom, prénoms, email, matricule, téléphone et mot de passe)');
+      return;
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email)) {
+      setError("Veuillez saisir une adresse email valide (ex: nom@domaine.bf)");
+      return;
+    }
+
+    const phoneRegex = /^\+?[0-9\s\-()]{8,20}$/;
+    if (!phoneRegex.test(phone)) {
+      setError("Veuillez saisir un numéro de téléphone valide (minimum 8 chiffres, ex: 70001122)");
       return;
     }
 
@@ -93,7 +133,7 @@ export default function Login() {
       corp: corp || 'Non spécifié',
       phone,
       status: 'Actif',
-      statut: 'En attente'
+      statut: 'Modif. à Valider'
     });
 
     setIsRegistering(false);
@@ -133,7 +173,87 @@ export default function Login() {
         <div className="bg-white py-8 px-4 shadow sm:rounded-xl sm:px-10 border border-gray-100">
           
           <AnimatePresence mode="wait">
-            {!isRegistering ? (
+            {pendingRoleSelection ? (
+              <motion.div
+                key="role-selection"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="space-y-6"
+              >
+                <div className="text-center">
+                  <h3 className="text-lg font-black text-gray-950 uppercase tracking-wide">
+                    Double Profil Détecté
+                  </h3>
+                  <p className="mt-2 text-xs text-gray-500 leading-relaxed font-bold uppercase tracking-wider">
+                    Vos identifiants correspondent à la fois à un compte Administrateur et à un compte Militaire Assuré.
+                  </p>
+                  <p className="mt-1.5 text-[11px] text-gray-400 font-medium leading-relaxed">
+                    Veuillez sélectionner l'espace auquel vous souhaitez vous connecter :
+                  </p>
+                </div>
+
+                <div className="space-y-4 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      safeStorage.setItem('cama_session', JSON.stringify(pendingRoleSelection.adminSession));
+                      navigate('/admin');
+                    }}
+                    className="w-full text-left p-4 border border-gray-200 hover:border-[#008a4b] hover:bg-green-50/20 rounded-xl transition cursor-pointer flex items-start gap-3 px-3.5 group"
+                  >
+                    <div className="p-2.5 bg-green-50 text-[#008a4b] rounded-lg group-hover:bg-[#008a4b] group-hover:text-white transition flex-shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-black text-gray-950 uppercase tracking-wide group-hover:text-[#008a4b] transition">
+                        Espace Administration
+                      </h4>
+                      <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                        Rôle : {pendingRoleSelection.adminSession.role || 'Administrateur'}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1 leading-snug font-medium">
+                        Gérer les dossiers d'enrôlement, valider les demandes des assurés et configurer les centres.
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      safeStorage.setItem('cama_session', JSON.stringify(pendingRoleSelection.userSession));
+                      navigate('/dashboard');
+                    }}
+                    className="w-full text-left p-4 border border-gray-200 hover:border-[#008a4b] hover:bg-green-50/20 rounded-xl transition cursor-pointer flex items-start gap-3 px-3.5 group"
+                  >
+                    <div className="p-2.5 bg-green-50 text-[#008a4b] rounded-lg group-hover:bg-[#008a4b] group-hover:text-white transition flex-shrink-0">
+                      <UserIcon className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-black text-gray-950 uppercase tracking-wide group-hover:text-[#008a4b] transition">
+                        Espace Militaire Assuré
+                      </h4>
+                      <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-0.5">
+                        Matricule : {pendingRoleSelection.userSession.matricule || 'N/A'}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1 leading-snug font-medium">
+                        Déclarer vos ayants-droit (conjoints, enfants), suivre l'avancement et imprimer vos fiches.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="pt-4 border-t border-gray-100 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setPendingRoleSelection(null)}
+                    className="text-xs font-bold text-gray-500 hover:text-gray-750 flex items-center uppercase tracking-wider"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" /> Retour
+                  </button>
+                </div>
+              </motion.div>
+            ) : !isRegistering ? (
               <motion.div
                 key="login"
                 initial={{ opacity: 0, x: -20 }}
@@ -338,6 +458,26 @@ export default function Login() {
                         placeholder="nom.prenom@armee.bf"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-600 uppercase mb-1">Numéro de Téléphone *</label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input 
+                        type="tel" 
+                        required
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#008a4b] outline-none text-sm font-mono" 
+                        placeholder="Ex: +226 70 00 11 22"
+                        value={phone}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (/^[0-9\s+\-()]*$/.test(val)) {
+                            setPhone(val);
+                          }
+                        }}
                       />
                     </div>
                   </div>

@@ -40,13 +40,27 @@ import {
   ModificationTrace
 } from '../lib/dataStore';
 
+const isPdf = (src: string | null | undefined): boolean => {
+  return typeof src === 'string' && src.startsWith('data:application/pdf');
+};
+
+const getFilesList = (val: string | null | undefined): string[] => {
+  if (!val) return [];
+  if (val.startsWith('[') && val.endsWith(']')) {
+    try {
+      return JSON.parse(val);
+    } catch (e) {
+      return [val];
+    }
+  }
+  return [val];
+};
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [requests, setRequests] = useState<Request[]>([]);
-  useEffect(() => { getRequests().then(setRequests); }, []);
   const [logs, setLogs] = useState<any[]>([]);
-  useEffect(() => { getLogs().then(setLogs); }, []);
   
   // Modals and tabs state
   const [showModal, setShowModal] = useState(false);
@@ -103,8 +117,7 @@ export default function Dashboard() {
   }, [navigate]);
 
   const refreshData = (userId: number) => {
-    
-    setRequests(requests.filter(r => r.userId === userId));
+    getRequests().then(reqs => setRequests(reqs.filter(r => r.userId === userId)));
     getLogs(userId).then(setLogs);
   };
 
@@ -127,23 +140,63 @@ export default function Dashboard() {
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("Le fichier est trop volumineux (max 2Mo)");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, justificatif: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const validFiles = (Array.from(files) as File[]).filter(file => {
+        const isValid = file.type.startsWith('image/') || file.type === 'application/pdf';
+        if (!isValid) {
+          alert(`Le fichier "${file.name}" n'est pas une image ou un PDF.`);
+        }
+        return isValid;
+      });
+
+      const readersPromises = validFiles.map(file => {
+        return new Promise<string>((resolve, reject) => {
+          if (file.size > 2 * 1024 * 1024) {
+            reject(new Error(`Le fichier "${file.name}" est trop volumineux (max 2Mo)`));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            if (reader.result) {
+              resolve(reader.result as string);
+            } else {
+              reject(new Error("Erreur de lecture"));
+            }
+          };
+          reader.onerror = () => reject(new Error("Erreur de lecture"));
+          reader.readAsDataURL(file);
+        });
+      });
+
+      Promise.all(readersPromises)
+        .then(results => {
+          setFormData(prev => {
+            const existing = getFilesList(prev.justificatif);
+            const merged = [...existing, ...results];
+            return { ...prev, justificatif: JSON.stringify(merged) };
+          });
+        })
+        .catch(err => {
+          alert(err.message);
+        });
     }
   };
 
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+
+    // Validate phone fields
+    const phoneRegex = /^\+?[0-9\s\-()]{8,20}$/;
+    if (profileData.telephones && !phoneRegex.test(profileData.telephones)) {
+      alert("Erreur : Le numéro de téléphone du militaire n'est pas valide (minimum 8 chiffres, ex: 70001122).");
+      return;
+    }
+    if (profileData.personneAPrevenirTel && !phoneRegex.test(profileData.personneAPrevenirTel)) {
+      alert("Erreur : Le numéro de téléphone de la personne à prévenir n'est pas valide (minimum 8 chiffres, ex: 75001122).");
+      return;
+    }
 
     // Any modification must be submitted for validation
     // We store the current user state as it is, but mark it as pending modification
@@ -193,6 +246,15 @@ export default function Dashboard() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+
+    // Contact telephone validation
+    if (formData.telephone) {
+      const phoneRegex = /^\+?[0-9\s\-()]{8,20}$/;
+      if (!phoneRegex.test(formData.telephone)) {
+        alert("Erreur : Veuillez saisir un numéro de téléphone de contact valide (minimum 8 chiffres, ex: +226 70 00 11 22).");
+        return;
+      }
+    }
 
     // Strict Age Rules Validation
     const age = calculateAge(formData.dateNaissance || '');
@@ -375,7 +437,7 @@ export default function Dashboard() {
       doc.setFont('Helvetica', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(80, 80, 80);
-      doc.text("Nom complet :", 18, 72);
+      doc.text("Nom & Prénom(s) :", 18, 72);
       doc.text("Matricule :", 18, 77);
       doc.text("Grade / Corps :", 18, 82);
       doc.text("Structure :", 18, 87);
@@ -899,7 +961,19 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Téléphone de contact *</label>
-                      <input required type="text" value={formData.telephone || ''} onChange={e => setFormData({...formData, telephone: e.target.value})} className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" placeholder="Ex: +226 70 00 11 22" />
+                      <input 
+                        required 
+                        type="tel" 
+                        value={formData.telephone || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (/^[0-9\s+\-()]*$/.test(val)) {
+                            setFormData({...formData, telephone: val});
+                          }
+                        }} 
+                        className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" 
+                        placeholder="Ex: +226 70 00 11 22" 
+                      />
                     </div>
                   </div>
                 )}
@@ -915,7 +989,18 @@ export default function Dashboard() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Téléphone Enfant / Tuteur</label>
-                        <input type="text" value={formData.telephone || ''} onChange={e => setFormData({...formData, telephone: e.target.value})} className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" placeholder="Ex: +226 56 12 34 56" />
+                        <input 
+                          type="tel" 
+                          value={formData.telephone || ''} 
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (/^[0-9\s+\-()]*$/.test(val)) {
+                              setFormData({...formData, telephone: val});
+                            }
+                          }} 
+                          className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" 
+                          placeholder="Ex: +226 56 12 34 56" 
+                        />
                       </div>
                       <div>
                         <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Réf. Document d'identité (Obligatoire si +15 ans)</label>
@@ -958,24 +1043,65 @@ export default function Dashboard() {
                 </div>
 
                 {/* Justificatif Upload */}
-                <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center mt-2 group relative hover:bg-green-50/50 transition cursor-pointer">
-                  {formData.justificatif ? (
-                    <div className="flex flex-col items-center">
-                      <CheckCircle className="h-10 w-10 text-[#008a4b] mb-1.5" />
-                      <span className="text-sm font-extrabold text-[#008a4b]">Pièce justificative annexée</span>
-                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Image prête à être téléversée</span>
-                      <button type="button" onClick={() => setFormData({...formData, justificatif: ''})} className="text-[10px] text-red-500 font-bold uppercase mt-2.5 underline">Supprimer la pièce</button>
+                <div className="space-y-3">
+                  <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Pièce(s) d'État Civil Justificative(s) (Acte de naissance, acte de mariage, etc.) *</label>
+                  
+                  {formData.justificatif && getFilesList(formData.justificatif).length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {getFilesList(formData.justificatif).map((fileSrc, idx) => (
+                          <div key={idx} className="relative border border-gray-200 rounded-xl p-2 bg-slate-50 flex items-center justify-between">
+                            <div className="flex items-center gap-2 overflow-hidden">
+                              <div className="w-10 h-10 rounded border border-gray-300 overflow-hidden bg-white flex items-center justify-center flex-shrink-0">
+                                {isPdf(fileSrc) ? (
+                                  <FileText className="w-6 h-6 text-red-500" />
+                                ) : (
+                                  <img 
+                                    src={fileSrc} 
+                                    alt={`Aperçu ${idx + 1}`} 
+                                    className="w-full h-full object-cover" 
+                                    referrerPolicy="no-referrer"
+                                  />
+                                )}
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-600 truncate">
+                                {isPdf(fileSrc) ? 'Justificatif.pdf' : `Image_${idx + 1}.png`}
+                              </span>
+                            </div>
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                const current = getFilesList(formData.justificatif);
+                                current.splice(idx, 1);
+                                setFormData({
+                                  ...formData, 
+                                  justificatif: current.length > 0 ? JSON.stringify(current) : ''
+                                });
+                              }} 
+                              className="text-red-500 hover:text-red-700 p-1.5 bg-rose-50 hover:bg-rose-100 rounded-lg transition"
+                              title="Supprimer ce fichier"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="border border-dashed border-gray-200 rounded-xl p-3 text-center group relative hover:bg-green-50/50 transition cursor-pointer">
+                        <span className="text-xs text-[#008a4b] font-bold">+ Ajouter d'autres pièces</span>
+                        <input type="file" multiple onChange={handleFileChange} accept="image/*,application/pdf" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                      </div>
                     </div>
                   ) : (
-                    <>
+                    <div className="border-2 border-dashed border-gray-200 rounded-xl p-5 text-center group relative hover:bg-green-50/50 transition cursor-pointer">
                       <Upload className="mx-auto h-9 w-9 text-gray-300 group-hover:text-[#008a4b] transition-colors" />
                       <div className="mt-2 text-xs text-gray-650">
-                        <span className="text-[#008a4b] font-extrabold">Téléverser la pièce justificative</span>
-                        <p className="text-[9px] uppercase font-bold text-gray-450 mt-1">Acte de naissance / Acte de mariage / Copie CNIB (max 2Mo)</p>
+                        <span className="text-[#008a4b] font-extrabold">Téléverser les pièces justificatives</span>
+                        <p className="text-[9px] uppercase font-bold text-gray-450 mt-1">Glissez-déposez ou cliquez (Images / PDFs, max 2Mo par fichier)</p>
                       </div>
-                    </>
+                      <input type="file" multiple onChange={handleFileChange} accept="image/*,application/pdf" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    </div>
                   )}
-                  <input type="file" onChange={handleFileChange} accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                 </div>
                 
                 <div className="pt-6 flex flex-col-reverse sm:flex-row justify-end gap-3 border-t border-gray-100">
@@ -1018,7 +1144,7 @@ export default function Dashboard() {
               <form onSubmit={handleProfileSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Nom complet (Militaire) *</label>
+                    <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Nom (Militaire) *</label>
                     <input required type="text" value={profileData.name || ''} onChange={e => setProfileData({...profileData, name: e.target.value})} className="mt-1 block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold uppercase" />
                   </div>
                   <div>
@@ -1106,7 +1232,19 @@ export default function Dashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="md:col-span-1">
                       <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Téléphones Militaire *</label>
-                      <input required type="text" value={profileData.telephones || ''} onChange={e => setProfileData({...profileData, telephones: e.target.value})} className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" placeholder="+226 70001122" />
+                      <input 
+                        required 
+                        type="tel" 
+                        value={profileData.telephones || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (/^[0-9\s+\-()]*$/.test(val)) {
+                            setProfileData({...profileData, telephones: val});
+                          }
+                        }} 
+                        className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" 
+                        placeholder="+226 70001122" 
+                      />
                     </div>
                     <div>
                       <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Personne à prévenir *</label>
@@ -1114,7 +1252,19 @@ export default function Dashboard() {
                     </div>
                     <div>
                       <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Téléphone à prévenir *</label>
-                      <input required type="text" value={profileData.personneAPrevenirTel || ''} onChange={e => setProfileData({...profileData, personneAPrevenirTel: e.target.value})} className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" placeholder="+226 75001122" />
+                      <input 
+                        required 
+                        type="tel" 
+                        value={profileData.personneAPrevenirTel || ''} 
+                        onChange={e => {
+                          const val = e.target.value;
+                          if (/^[0-9\s+\-()]*$/.test(val)) {
+                            setProfileData({...profileData, personneAPrevenirTel: val});
+                          }
+                        }} 
+                        className="block w-full border border-gray-300 bg-white text-gray-900 rounded-lg shadow-sm py-2 px-3 focus:outline-none focus:ring-[#008a4b] sm:text-sm font-bold font-mono" 
+                        placeholder="+226 75001122" 
+                      />
                     </div>
                   </div>
                 </div>

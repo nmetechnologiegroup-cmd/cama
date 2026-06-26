@@ -372,6 +372,33 @@ async function startServer() {
         JSON.stringify(u.modificationTraces || [])
       ];
       const result = await dbRun(sql, params);
+      
+      // --- LOGIC FOR SYNCING WITH REQUESTS ---
+      // If the user's status is 'Actif' or 'Validé', ensure they exist in 'requests'
+      if (u.status === 'Actif' || u.statut === 'Validé') {
+        const reqId = 'req-' + Date.now();
+        const reqDate = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        const insertReqSql = `
+          INSERT INTO requests (
+            id, assure, matricule, membre, prenoms, sexe, lien, date, statut, num_informatique, num_cama, user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        await dbRun(insertReqSql, [
+          reqId,
+          u.name + (u.prenoms ? ' ' + u.prenoms : ''), // assure
+          u.matricule || u.numInformatique || u.num_informatique || '', // matricule
+          u.name, // membre
+          u.prenoms || '', // prenoms
+          u.sexe || 'M', // sexe
+          'Titulaire', // lien
+          reqDate, // date
+          'Validé', // statut
+          u.numInformatique !== undefined ? u.numInformatique : (u.num_informatique || ''),
+          u.numCarteCama !== undefined ? u.numCarteCama : (u.num_carte_cama || ''),
+          result.id // user_id
+        ]);
+      }
+
       res.status(201).json({ id: result.id, message: 'Utilisateur créé avec succès.' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -412,6 +439,46 @@ async function startServer() {
         req.params.id
       ];
       await dbRun(sql, params);
+
+      // --- LOGIC FOR SYNCING WITH REQUESTS ---
+      if (u.status === 'Actif' || u.statut === 'Validé') {
+        const existingReqs = await dbAll('SELECT id FROM requests WHERE user_id = ? AND lien = ?', [req.params.id, 'Titulaire']);
+        if (existingReqs.length === 0) {
+          const reqId = 'req-' + Date.now();
+          const reqDate = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+          const insertReqSql = `
+            INSERT INTO requests (
+              id, assure, matricule, membre, prenoms, sexe, lien, date, statut, num_informatique, num_cama, user_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `;
+          await dbRun(insertReqSql, [
+            reqId,
+            u.name + (u.prenoms ? ' ' + u.prenoms : ''),
+            u.matricule || u.numInformatique || u.num_informatique || '',
+            u.name,
+            u.prenoms || '',
+            u.sexe || 'M',
+            'Titulaire',
+            reqDate,
+            'Validé',
+            u.numInformatique !== undefined ? u.numInformatique : (u.num_informatique || ''),
+            u.numCarteCama !== undefined ? u.numCarteCama : (u.num_carte_cama || ''),
+            req.params.id
+          ]);
+        } else {
+          await dbRun(`UPDATE requests SET statut = 'Validé', assure = ?, matricule = ?, membre = ?, prenoms = ?, sexe = ?, num_informatique = ?, num_cama = ? WHERE user_id = ? AND lien = 'Titulaire'`, [
+            u.name + (u.prenoms ? ' ' + u.prenoms : ''),
+            u.matricule || u.numInformatique || u.num_informatique || '',
+            u.name,
+            u.prenoms || '',
+            u.sexe || 'M',
+            u.numInformatique !== undefined ? u.numInformatique : (u.num_informatique || ''),
+            u.numCarteCama !== undefined ? u.numCarteCama : (u.num_carte_cama || ''),
+            req.params.id
+          ]);
+        }
+      }
+
       res.json({ message: 'Utilisateur mis à jour avec succès.' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -431,7 +498,6 @@ async function startServer() {
   app.get('/api/requests', async (req, res) => {
     try {
       const requests = await dbAll('SELECT * FROM requests');
-      // Map to frontend format
       const mapped = requests.map(r => ({
         id: r.id,
         assure: r.assure,
@@ -460,7 +526,43 @@ async function startServer() {
         userId: r.user_id,
         emailNotificationSent: Boolean(r.email_notification_sent)
       }));
-      res.json(mapped);
+
+      // Find users that are Actif or Validé and not already in mapped as Titulaire
+      const users = await dbAll("SELECT * FROM users WHERE status = 'Actif' OR statut = 'Validé'");
+      const existingTitulaireUserIds = new Set(mapped.filter(r => r.lien === 'Titulaire').map(r => r.userId));
+      
+      const dynamicRequests = users
+        .filter(u => !existingTitulaireUserIds.has(u.id))
+        .map(u => ({
+          id: 'auto-req-' + u.id,
+          assure: u.name + (u.prenoms ? ' ' + u.prenoms : ''),
+          matricule: u.matricule || u.num_informatique || '',
+          membre: u.name,
+          prenoms: u.prenoms || '',
+          sexe: u.sexe || 'M',
+          dateNaissance: '',
+          lieuNaissance: '',
+          gs: '',
+          refIdentityDoc: '',
+          refMarriageCertificate: '',
+          refScolariteDoc: '',
+          motherName: '',
+          profession: 'Militaire',
+          residence: u.address || '',
+          telephone: u.phone || u.telephones || '',
+          lien: 'Titulaire',
+          date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }),
+          statut: 'Validé',
+          numInformatique: u.num_informatique || '',
+          numCama: u.num_carte_cama || '',
+          justificatif: '',
+          rejectionReason: '',
+          documentImage: null,
+          userId: u.id,
+          emailNotificationSent: false
+        }));
+
+      res.json([...mapped, ...dynamicRequests]);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }

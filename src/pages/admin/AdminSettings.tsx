@@ -35,7 +35,8 @@ export default function AdminSettings() {
           contactTitle: "Contactez-nous",
           address: "Camp Guillaume Ouédraogo, Ouagadougou, Burkina Faso",
           phone: "+226 25 00 00 00",
-          email: "contact@cama.bf"
+          email: "contact@cama.bf",
+          whatsapp: "+226 70 00 11 22"
         }),
         [field]: value
       }
@@ -109,6 +110,16 @@ export default function AdminSettings() {
                 />
               </div>
               <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Numéro WhatsApp de l'Assistance</label>
+                <input 
+                  type="text" 
+                  value={settings.footer?.whatsapp || ""} 
+                  onChange={(e) => updateFooter('whatsapp', e.target.value)}
+                  placeholder="Ex: +226 70 00 11 22"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-[#008a4b]/20 focus:border-[#008a4b] transition-all font-medium text-gray-900 shadow-sm font-mono" 
+                />
+              </div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-bold text-gray-700 mb-2">Adresse de Siège Centrale</label>
                 <input 
                   type="text" 
