@@ -147,6 +147,12 @@ async function startServer() {
         if (!colNames.includes('num_dossier')) {
           await mysqlPool.query("ALTER TABLE users ADD COLUMN num_dossier VARCHAR(100)");
         }
+        if (!colNames.includes('modification_rejected')) {
+          await mysqlPool.query("ALTER TABLE users ADD COLUMN modification_rejected INT DEFAULT 0");
+        }
+        if (!colNames.includes('modification_rejection_reason')) {
+          await mysqlPool.query("ALTER TABLE users ADD COLUMN modification_rejection_reason LONGTEXT");
+        }
       } else {
         const columns = sqliteDb.prepare("PRAGMA table_info(users)").all();
         const colNames = columns.map((c: any) => c.name.toLowerCase());
@@ -162,6 +168,12 @@ async function startServer() {
         }
         if (!colNames.includes('num_dossier')) {
           sqliteDb.prepare("ALTER TABLE users ADD COLUMN num_dossier TEXT").run();
+        }
+        if (!colNames.includes('modification_rejected')) {
+          sqliteDb.prepare("ALTER TABLE users ADD COLUMN modification_rejected INTEGER DEFAULT 0").run();
+        }
+        if (!colNames.includes('modification_rejection_reason')) {
+          sqliteDb.prepare("ALTER TABLE users ADD COLUMN modification_rejection_reason TEXT").run();
         }
       }
       console.log('Vérification et migration des colonnes de la table users complétées.');
@@ -356,7 +368,9 @@ async function startServer() {
       statut: r.statut || 'Incomplet',
       numDossier: r.num_dossier,
       pendingModifications: safeParse(r.pending_modifications, {}),
-      modificationTraces: safeParse(r.modification_traces, [])
+      modificationTraces: safeParse(r.modification_traces, []),
+      modificationRejected: r.modification_rejected === 1 || r.modification_rejected === true,
+      modificationRejectionReason: r.modification_rejection_reason || undefined
     };
   };
 
@@ -485,7 +499,8 @@ async function startServer() {
           num_informatique = ?, grade = ?, categorie = ?, num_cim = ?, num_carte_cama = ?, num_iup = ?,
           struct_armee = ?, struct_region = ?, struct_corps = ?, struct_service = ?, struct_section = ?, struct_sous_section = ?,
           telephones = ?, personne_a_prevenir = ?, personne_a_prevenir_tel = ?,
-          statut = ?, pending_modifications = ?, modification_traces = ?, num_dossier = ?, matricule = ?
+          statut = ?, pending_modifications = ?, modification_traces = ?, num_dossier = ?, matricule = ?,
+          modification_rejected = ?, modification_rejection_reason = ?
         WHERE id = ?
       `;
       const params = [
@@ -509,6 +524,8 @@ async function startServer() {
         u.modificationTraces !== undefined ? (typeof u.modificationTraces === 'string' ? u.modificationTraces : JSON.stringify(u.modificationTraces)) : null,
         numDossier !== undefined ? numDossier : (u.num_dossier || null),
         u.matricule,
+        u.modificationRejected ? 1 : 0,
+        u.modificationRejectionReason || null,
         req.params.id
       ];
       await dbRun(sql, params);

@@ -278,7 +278,9 @@ export default function Dashboard() {
       ...currentUser,
       pendingModifications: cleanModifications,
       statut: newStatut as any,
-      modificationTraces: traces
+      modificationTraces: traces,
+      modificationRejected: undefined,
+      modificationRejectionReason: undefined
     } as User;
 
     await editUser(updatedUser);
@@ -738,6 +740,30 @@ export default function Dashboard() {
             </button>
           </div>
         </div>
+
+        {/* Profile modification rejected warning banner */}
+        {currentUser?.modificationRejected && (
+          <div className="mb-6 p-5 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-start justify-between gap-4 transition-all duration-300 text-rose-950">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-extrabold text-sm uppercase tracking-tight">Dernière modification de profil rejetée par la CAMA</p>
+                <p className="text-xs text-rose-800 mt-1 font-medium">
+                  Vos modifications de fiche administrative proposées n'ont pas pu être approuvées par l'administration de la CAMA.
+                </p>
+                {currentUser.modificationRejectionReason && (
+                  <div className="mt-2 text-xs bg-white/60 border border-rose-100 p-2.5 rounded-xl text-rose-900 font-semibold">
+                    <strong className="text-rose-950 uppercase text-[10px] block mb-1">Motif du rejet :</strong>
+                    {currentUser.modificationRejectionReason}
+                  </div>
+                )}
+                <p className="text-xs text-rose-700 mt-2 font-bold uppercase tracking-wider bg-rose-100/40 p-2 rounded-xl border border-rose-200/50 inline-block">
+                  ⚠️ Veuillez entrer en contact avec l'assurance ou la caisse pour régulariser votre situation.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Profile incomplete warning banner */}
         {(isProfileIncomplete || isPendingValidation) && !!currentUser && (

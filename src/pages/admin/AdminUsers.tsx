@@ -371,7 +371,9 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
       ...user,
       ...user.pendingModifications,
       statut: 'Validé',
-      pendingModifications: undefined
+      pendingModifications: undefined,
+      modificationRejected: false,
+      modificationRejectionReason: undefined
     } as User;
     
     const result = await editUser(updatedUser);
@@ -382,10 +384,15 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
   };
 
   const handleRejectModifications = async (user: User) => {
+    const reason = prompt("Veuillez saisir le motif du rejet des modifications (facultatif) :");
+    if (reason === null) return; // Annulé par l'administrateur
+
     const updatedUser: User = {
       ...user,
       statut: 'Validé',
-      pendingModifications: undefined
+      pendingModifications: undefined,
+      modificationRejected: true,
+      modificationRejectionReason: reason || "Les modifications de profil proposées ont été rejetées par l'administration."
     } as User;
     
     const result = await editUser(updatedUser);

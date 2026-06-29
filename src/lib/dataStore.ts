@@ -71,6 +71,8 @@ export interface User {
   modificationTraces?: ModificationTrace[];
   numDossier?: string;
   numDossierHistory?: { date: string, author: string, oldValue: string, newValue: string, reason: string }[];
+  modificationRejected?: boolean;
+  modificationRejectionReason?: string;
 }
 
 export interface NotificationTemplate {
