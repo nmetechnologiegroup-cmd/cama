@@ -59,16 +59,17 @@ export default function AdminLayout() {
 
   const navigation = [
     { name: 'Tableau de bord', href: '/admin', icon: LayoutDashboard },
-    { name: 'Gestion Site Web', href: '/admin/site', icon: Globe },
-    { name: 'Messagerie Chat', href: '/admin/chat', icon: MessageSquare },
     { name: 'Dossier Assuré', href: '/admin/dossiers', icon: FolderOpen },
-    { name: 'Utilisateurs', href: '/admin/users', icon: Users },
-    { name: 'Centres de santé', href: '/admin/centres', icon: Building2 },
+    { name: 'Gestion Site Web', href: '/admin/site', icon: Globe },
     { name: 'Actualités', href: '/admin/news', icon: Newspaper },
+    { name: 'Utilisateurs', href: '/admin/users', icon: Users },
+    { name: 'Messagerie Chat', href: '/admin/chat', icon: MessageSquare },
+    { name: 'Centres de santé', href: '/admin/centres', icon: Building2 },
     { name: 'Paramètres', href: '/admin/settings', icon: Settings },
   ];
 
   const handleLogout = () => {
+    safeStorage.removeItem('cama_session');
     navigate('/login');
   };
 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, FormEvent, useRef, useEffect } from 'react';
 import { Plus, Edit3, Trash2, Calendar, Eye, X, Save, Sparkles, BookOpen, Upload, Trash, Check, FileUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import toast from 'react-hot-toast';
 import { getArticles, addArticle, editArticle, deleteArticle, Article } from '../../lib/dataStore';
 import { compressImage } from '../../lib/utils';
 
@@ -53,7 +54,7 @@ export default function AdminNews() {
 
   const processFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert("Seuls les fichiers d'images (JPEG, PNG, WebP) sont acceptés comme couverture.");
+      toast.error("Seuls les fichiers d'images (JPEG, PNG, WebP) sont acceptés comme couverture.");
       return;
     }
     try {
@@ -140,7 +141,7 @@ export default function AdminNews() {
       setIsModalOpen(false);
     } catch (error) {
       console.error(error);
-      alert("Une erreur est survenue lors de l'enregistrement de la publication.");
+      toast.error("Une erreur est survenue lors de l'enregistrement de la publication.");
     } finally {
       setIsSaving(false);
     }

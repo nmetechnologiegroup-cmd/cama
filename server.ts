@@ -128,6 +128,47 @@ async function startServer() {
       console.log('Base de données initialisée avec', scriptName);
     }
     
+    // Migration de sécurité pour assurer la présence des colonnes indispensables dans 'users'
+    try {
+      if (mysqlPool) {
+        const colsQuery = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users'";
+        const rows = await dbAll(colsQuery);
+        const colNames = rows.map((r: any) => (r.COLUMN_NAME || r.column_name || '').toLowerCase());
+        
+        if (!colNames.includes('statut')) {
+          await mysqlPool.query("ALTER TABLE users ADD COLUMN statut VARCHAR(50) DEFAULT 'Incomplet'");
+        }
+        if (!colNames.includes('pending_modifications')) {
+          await mysqlPool.query("ALTER TABLE users ADD COLUMN pending_modifications LONGTEXT");
+        }
+        if (!colNames.includes('modification_traces')) {
+          await mysqlPool.query("ALTER TABLE users ADD COLUMN modification_traces LONGTEXT");
+        }
+        if (!colNames.includes('num_dossier')) {
+          await mysqlPool.query("ALTER TABLE users ADD COLUMN num_dossier VARCHAR(100)");
+        }
+      } else {
+        const columns = sqliteDb.prepare("PRAGMA table_info(users)").all();
+        const colNames = columns.map((c: any) => c.name.toLowerCase());
+        
+        if (!colNames.includes('statut')) {
+          sqliteDb.prepare("ALTER TABLE users ADD COLUMN statut TEXT DEFAULT 'Incomplet'").run();
+        }
+        if (!colNames.includes('pending_modifications')) {
+          sqliteDb.prepare("ALTER TABLE users ADD COLUMN pending_modifications TEXT").run();
+        }
+        if (!colNames.includes('modification_traces')) {
+          sqliteDb.prepare("ALTER TABLE users ADD COLUMN modification_traces TEXT").run();
+        }
+        if (!colNames.includes('num_dossier')) {
+          sqliteDb.prepare("ALTER TABLE users ADD COLUMN num_dossier TEXT").run();
+        }
+      }
+      console.log('Vérification et migration des colonnes de la table users complétées.');
+    } catch (migErr: any) {
+      console.error("Erreur non bloquante de migration des colonnes users :", migErr.message);
+    }
+    
     // Create chat tables if they don't exist
     try {
       if (mysqlPool) {
@@ -312,7 +353,8 @@ async function startServer() {
       telephones: r.telephones,
       personneAPrevenir: r.personne_a_prevenir,
       personneAPrevenirTel: r.personne_a_prevenir_tel,
-      statut: r.statut || 'En attente',
+      statut: r.statut || 'Incomplet',
+      numDossier: r.num_dossier,
       pendingModifications: safeParse(r.pending_modifications, {}),
       modificationTraces: safeParse(r.modification_traces, [])
     };
@@ -340,15 +382,29 @@ async function startServer() {
   app.post('/api/users', async (req, res) => {
     const u = req.body;
     try {
+      // Automatic numDossier generation if missing
+      let numDossier = u.numDossier;
+      if (!numDossier) {
+        const year = new Date().getFullYear();
+        const lastUser = await dbGet('SELECT num_dossier FROM users WHERE num_dossier LIKE ? ORDER BY id DESC LIMIT 1', [`CAMA-${year}-%`]);
+        let nextSeq = 1;
+        if (lastUser && lastUser.num_dossier) {
+          const parts = lastUser.num_dossier.split('-');
+          const lastSeq = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+        }
+        numDossier = `CAMA-${year}-BF-${nextSeq.toString().padStart(4, '0')}`;
+      }
+
       const sql = `
         INSERT INTO users (
           name, matricule, corp, email, password, status, phone, address, prenoms, sexe, 
           num_informatique, grade, categorie, num_cim, num_carte_cama, num_iup, 
           struct_armee, struct_region, struct_corps, struct_service, struct_section, struct_sous_section, 
           telephones, personne_a_prevenir, personne_a_prevenir_tel, 
-          statut, pending_modifications, modification_traces
+          statut, pending_modifications, modification_traces, num_dossier
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const params = [
         u.name, u.matricule, u.corp, u.email, u.password || 'password123', u.status || 'Actif',
@@ -367,9 +423,10 @@ async function startServer() {
         u.telephones,
         u.personneAPrevenir !== undefined ? u.personneAPrevenir : u.personne_a_prevenir,
         u.personneAPrevenirTel !== undefined ? u.personneAPrevenirTel : u.personne_a_prevenir_tel,
-        u.statut || 'En attente',
+        u.statut || 'Incomplet',
         JSON.stringify(u.pendingModifications || {}),
-        JSON.stringify(u.modificationTraces || [])
+        JSON.stringify(u.modificationTraces || []),
+        numDossier
       ];
       const result = await dbRun(sql, params);
       
@@ -408,13 +465,27 @@ async function startServer() {
   app.put('/api/users/:id', async (req, res) => {
     const u = req.body;
     try {
+      // Automatic numDossier generation if missing and status is Validé or Actif
+      let numDossier = u.numDossier;
+      if (!numDossier && (u.statut === 'Validé' || u.status === 'Actif')) {
+        const year = new Date().getFullYear();
+        const lastUser = await dbGet('SELECT num_dossier FROM users WHERE num_dossier LIKE ? ORDER BY id DESC LIMIT 1', [`CAMA-${year}-%`]);
+        let nextSeq = 1;
+        if (lastUser && lastUser.num_dossier) {
+          const parts = lastUser.num_dossier.split('-');
+          const lastSeq = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+        }
+        numDossier = `CAMA-${year}-BF-${nextSeq.toString().padStart(4, '0')}`;
+      }
+
       const sql = `
         UPDATE users SET 
           name = ?, corp = ?, email = ?, status = ?, phone = ?, address = ?, prenoms = ?, sexe = ?,
           num_informatique = ?, grade = ?, categorie = ?, num_cim = ?, num_carte_cama = ?, num_iup = ?,
           struct_armee = ?, struct_region = ?, struct_corps = ?, struct_service = ?, struct_section = ?, struct_sous_section = ?,
           telephones = ?, personne_a_prevenir = ?, personne_a_prevenir_tel = ?,
-          statut = ?, pending_modifications = ?, modification_traces = ?
+          statut = ?, pending_modifications = ?, modification_traces = ?, num_dossier = ?, matricule = ?
         WHERE id = ?
       `;
       const params = [
@@ -436,47 +507,49 @@ async function startServer() {
         u.statut,
         u.pendingModifications !== undefined ? (typeof u.pendingModifications === 'string' ? u.pendingModifications : JSON.stringify(u.pendingModifications)) : null,
         u.modificationTraces !== undefined ? (typeof u.modificationTraces === 'string' ? u.modificationTraces : JSON.stringify(u.modificationTraces)) : null,
+        numDossier !== undefined ? numDossier : (u.num_dossier || null),
+        u.matricule,
         req.params.id
       ];
       await dbRun(sql, params);
 
       // --- LOGIC FOR SYNCING WITH REQUESTS ---
-      if (u.status === 'Actif' || u.statut === 'Validé') {
-        const existingReqs = await dbAll('SELECT id FROM requests WHERE user_id = ? AND lien = ?', [req.params.id, 'Titulaire']);
-        if (existingReqs.length === 0) {
-          const reqId = 'req-' + Date.now();
-          const reqDate = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-          const insertReqSql = `
-            INSERT INTO requests (
-              id, assure, matricule, membre, prenoms, sexe, lien, date, statut, num_informatique, num_cama, user_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `;
-          await dbRun(insertReqSql, [
-            reqId,
-            u.name + (u.prenoms ? ' ' + u.prenoms : ''),
-            u.matricule || u.numInformatique || u.num_informatique || '',
-            u.name,
-            u.prenoms || '',
-            u.sexe || 'M',
-            'Titulaire',
-            reqDate,
-            'Validé',
-            u.numInformatique !== undefined ? u.numInformatique : (u.num_informatique || ''),
-            u.numCarteCama !== undefined ? u.numCarteCama : (u.num_carte_cama || ''),
-            req.params.id
-          ]);
-        } else {
-          await dbRun(`UPDATE requests SET statut = 'Validé', assure = ?, matricule = ?, membre = ?, prenoms = ?, sexe = ?, num_informatique = ?, num_cama = ? WHERE user_id = ? AND lien = 'Titulaire'`, [
-            u.name + (u.prenoms ? ' ' + u.prenoms : ''),
-            u.matricule || u.numInformatique || u.num_informatique || '',
-            u.name,
-            u.prenoms || '',
-            u.sexe || 'M',
-            u.numInformatique !== undefined ? u.numInformatique : (u.num_informatique || ''),
-            u.numCarteCama !== undefined ? u.numCarteCama : (u.num_carte_cama || ''),
-            req.params.id
-          ]);
-        }
+      const reqStatut = u.statut || 'Incomplet';
+      const existingReqs = await dbAll('SELECT id FROM requests WHERE user_id = ? AND lien = ?', [req.params.id, 'Titulaire']);
+      if (existingReqs.length === 0) {
+        const reqId = 'req-' + Date.now();
+        const reqDate = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+        const insertReqSql = `
+          INSERT INTO requests (
+            id, assure, matricule, membre, prenoms, sexe, lien, date, statut, num_informatique, num_cama, user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        await dbRun(insertReqSql, [
+          reqId,
+          u.name + (u.prenoms ? ' ' + u.prenoms : ''),
+          u.matricule || u.numInformatique || u.num_informatique || '',
+          u.name,
+          u.prenoms || '',
+          u.sexe || 'M',
+          'Titulaire',
+          reqDate,
+          reqStatut,
+          u.numInformatique !== undefined ? u.numInformatique : (u.num_informatique || ''),
+          u.numCarteCama !== undefined ? u.numCarteCama : (u.num_carte_cama || ''),
+          req.params.id
+        ]);
+      } else {
+        await dbRun(`UPDATE requests SET statut = ?, assure = ?, matricule = ?, membre = ?, prenoms = ?, sexe = ?, num_informatique = ?, num_cama = ? WHERE user_id = ? AND lien = 'Titulaire'`, [
+          reqStatut,
+          u.name + (u.prenoms ? ' ' + u.prenoms : ''),
+          u.matricule || u.numInformatique || u.num_informatique || '',
+          u.name,
+          u.prenoms || '',
+          u.sexe || 'M',
+          u.numInformatique !== undefined ? u.numInformatique : (u.num_informatique || ''),
+          u.numCarteCama !== undefined ? u.numCarteCama : (u.num_carte_cama || ''),
+          req.params.id
+        ]);
       }
 
       res.json({ message: 'Utilisateur mis à jour avec succès.' });
@@ -527,40 +600,54 @@ async function startServer() {
         emailNotificationSent: Boolean(r.email_notification_sent)
       }));
 
-      // Find users that are Actif or Validé and not already in mapped as Titulaire
-      const users = await dbAll("SELECT * FROM users WHERE status = 'Actif' OR statut = 'Validé'");
+      // Find all registered users to show their dossiers for admin verification and validation
+      const users = await dbAll("SELECT * FROM users");
       const existingTitulaireUserIds = new Set(mapped.filter(r => r.lien === 'Titulaire').map(r => r.userId));
       
       const dynamicRequests = users
         .filter(u => !existingTitulaireUserIds.has(u.id))
-        .map(u => ({
-          id: 'auto-req-' + u.id,
-          assure: u.name + (u.prenoms ? ' ' + u.prenoms : ''),
-          matricule: u.matricule || u.num_informatique || '',
-          membre: u.name,
-          prenoms: u.prenoms || '',
-          sexe: u.sexe || 'M',
-          dateNaissance: '',
-          lieuNaissance: '',
-          gs: '',
-          refIdentityDoc: '',
-          refMarriageCertificate: '',
-          refScolariteDoc: '',
-          motherName: '',
-          profession: 'Militaire',
-          residence: u.address || '',
-          telephone: u.phone || u.telephones || '',
-          lien: 'Titulaire',
-          date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }),
-          statut: 'Validé',
-          numInformatique: u.num_informatique || '',
-          numCama: u.num_carte_cama || '',
-          justificatif: '',
-          rejectionReason: '',
-          documentImage: null,
-          userId: u.id,
-          emailNotificationSent: false
-        }));
+        .map(u => {
+          const pMods = safeParse(u.pending_modifications, {});
+          
+          // Merge pending modifications into the user details
+          const mergedName = pMods.name || u.name || '';
+          const mergedPrenoms = pMods.prenoms || u.prenoms || '';
+          const mergedMatricule = pMods.matricule || u.matricule || u.num_informatique || '';
+          const mergedSexe = pMods.sexe || u.sexe || 'M';
+          const mergedAddress = pMods.address || u.address || '';
+          const mergedPhone = pMods.telephones || u.phone || u.telephones || '';
+          const mergedNumInformatique = pMods.numInformatique || u.num_informatique || '';
+          const mergedNumCama = pMods.numCarteCama || u.num_carte_cama || '';
+
+          return {
+            id: 'auto-req-' + u.id,
+            assure: mergedName + (mergedPrenoms ? ' ' + mergedPrenoms : ''),
+            matricule: mergedMatricule,
+            membre: mergedName,
+            prenoms: mergedPrenoms,
+            sexe: mergedSexe,
+            dateNaissance: pMods.dateNaissance || '',
+            lieuNaissance: pMods.lieuNaissance || '',
+            gs: pMods.gs || '',
+            refIdentityDoc: pMods.refIdentityDoc || '',
+            refMarriageCertificate: pMods.refMarriageCertificate || '',
+            refScolariteDoc: pMods.refScolariteDoc || '',
+            motherName: pMods.motherName || '',
+            profession: 'Militaire',
+            residence: mergedAddress,
+            telephone: mergedPhone,
+            lien: 'Titulaire',
+            date: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }),
+            statut: u.statut === 'Validé' ? 'Validé' : (u.statut || 'Incomplet'),
+            numInformatique: mergedNumInformatique,
+            numCama: mergedNumCama,
+            justificatif: '',
+            rejectionReason: '',
+            documentImage: null,
+            userId: u.id,
+            emailNotificationSent: false
+          };
+        });
 
       res.json([...mapped, ...dynamicRequests]);
     } catch (error: any) {
@@ -630,22 +717,139 @@ async function startServer() {
   app.put('/api/requests/:id', async (req, res) => {
     const r = req.body;
     try {
-      const sql = `
-        UPDATE requests SET 
-          assure = ?, matricule = ?, membre = ?, prenoms = ?, sexe = ?, date_naissance = ?, lieu_naissance = ?, 
-          gs = ?, ref_identity_doc = ?, ref_marriage_certificate = ?, ref_scolarite_doc = ?, mother_name = ?, 
-          profession = ?, residence = ?, telephone = ?, lien = ?, date = ?, statut = ?, num_informatique = ?, 
-          num_cama = ?, justificatif = ?, rejection_reason = ?, document_image = ?, user_id = ?, email_notification_sent = ?
-        WHERE id = ?
-      `;
-      const params = [
-        r.assure, r.matricule, r.membre, r.prenoms, r.sexe, r.dateNaissance, r.lieuNaissance,
-        r.gs, r.refIdentityDoc, r.refMarriageCertificate, r.refScolariteDoc, r.motherName,
-        r.profession, r.residence, r.telephone, r.lien, r.date, r.statut, r.numInformatique,
-        r.numCama, r.justificatif, r.rejectionReason, r.documentImage, r.userId, r.emailNotificationSent ? 1 : 0,
-        req.params.id
-      ];
-      await dbRun(sql, params);
+      const isAutoReq = req.params.id.startsWith('auto-req-');
+      const isTitulaire = r.lien === 'Titulaire' || isAutoReq;
+
+      if (isTitulaire) {
+        // Find corresponding user
+        const userId = isAutoReq ? req.params.id.replace('auto-req-', '') : r.userId;
+        const user = await dbGet('SELECT * FROM users WHERE id = ?', [userId]);
+        if (user) {
+          const newStatut = r.statut || 'Incomplet';
+          // When an admin validates the subscriber request, activate the user account too
+          const newStatus = newStatut === 'Validé' ? 'Actif' : 'Inactif';
+
+          // Dynamically generate a folder number (num_dossier) if they are being validated and don't have one
+          let numDossier = user.num_dossier;
+          if (!numDossier && (newStatut === 'Validé' || newStatus === 'Actif')) {
+            const year = new Date().getFullYear();
+            try {
+              const lastUser = await dbGet('SELECT num_dossier FROM users WHERE num_dossier LIKE ? ORDER BY id DESC LIMIT 1', [`CAMA-${year}-BF-%`]);
+              let nextSeq = 1;
+              if (lastUser && lastUser.num_dossier) {
+                const parts = lastUser.num_dossier.split('-');
+                const lastSeq = parseInt(parts[parts.length - 1], 10);
+                if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
+              }
+              numDossier = `CAMA-${year}-BF-${nextSeq.toString().padStart(4, '0')}`;
+            } catch (err) {
+              numDossier = `CAMA-${year}-BF-0001`;
+            }
+          }
+
+          if (newStatut === 'Validé') {
+            const pMods = safeParse(user.pending_modifications, {});
+            
+            // Map camelCase pending modifications to snake_case columns
+            const merged = {
+              name: r.assure || pMods.name || user.name || '',
+              prenoms: r.prenoms || pMods.prenoms || user.prenoms || '',
+              sexe: r.sexe || pMods.sexe || user.sexe || 'M',
+              matricule: r.matricule || pMods.matricule || user.matricule || '',
+              num_informatique: r.numInformatique !== undefined ? r.numInformatique : (pMods.numInformatique || user.num_informatique || ''),
+              num_carte_cama: r.numCama !== undefined ? r.numCama : (pMods.numCarteCama || user.num_carte_cama || ''),
+              grade: pMods.grade || user.grade || '',
+              categorie: pMods.categorie || user.categorie || '',
+              num_cim: pMods.numCim || user.num_cim || '',
+              num_iup: pMods.numIup || user.num_iup || '',
+              struct_armee: pMods.structArmee || user.struct_armee || '',
+              struct_region: pMods.structRegion || user.struct_region || '',
+              struct_corps: pMods.structCorps || user.struct_corps || user.corp || '',
+              struct_service: pMods.structService || user.struct_service || '',
+              struct_section: pMods.structSection || user.struct_section || '',
+              struct_sous_section: pMods.structSousSection || user.struct_sous_section || '',
+              telephones: pMods.telephones || user.telephones || r.telephone || user.phone || '',
+              personne_a_prevenir: pMods.personneAPrevenir || user.personne_a_prevenir || '',
+              personne_a_prevenir_tel: pMods.personneAPrevenirTel || user.personne_a_prevenir_tel || '',
+              statut: 'Validé',
+              status: 'Actif',
+              num_dossier: numDossier,
+              pending_modifications: null
+            };
+
+            const updateSql = `
+              UPDATE users SET 
+                name = ?, prenoms = ?, sexe = ?, matricule = ?, num_informatique = ?, num_carte_cama = ?, 
+                grade = ?, categorie = ?, num_cim = ?, num_iup = ?, struct_armee = ?, struct_region = ?, 
+                struct_corps = ?, struct_service = ?, struct_section = ?, struct_sous_section = ?, 
+                telephones = ?, personne_a_prevenir = ?, personne_a_prevenir_tel = ?, 
+                statut = ?, status = ?, num_dossier = ?, pending_modifications = ?
+              WHERE id = ?
+            `;
+            await dbRun(updateSql, [
+              merged.name, merged.prenoms, merged.sexe, merged.matricule, merged.num_informatique, merged.num_carte_cama,
+              merged.grade, merged.categorie, merged.num_cim, merged.num_iup, merged.struct_armee, merged.struct_region,
+              merged.struct_corps, merged.struct_service, merged.struct_section, merged.struct_sous_section,
+              merged.telephones, merged.personne_a_prevenir, merged.personne_a_prevenir_tel,
+              merged.statut, merged.status, merged.num_dossier, merged.pending_modifications,
+              userId
+            ]);
+          } else {
+            const updateSql = `
+              UPDATE users SET 
+                name = ?, matricule = ?, num_informatique = ?, num_carte_cama = ?, 
+                statut = ?, status = ?, num_dossier = ?, phone = ?, address = ?
+              WHERE id = ?
+            `;
+            await dbRun(updateSql, [
+              r.assure, 
+              r.matricule, 
+              r.numInformatique !== undefined ? r.numInformatique : (user.num_informatique || ''), 
+              r.numCama !== undefined ? r.numCama : (user.num_carte_cama || ''),
+              newStatut, 
+              newStatus, 
+              numDossier, 
+              r.telephone || user.phone || '', 
+              r.residence || user.address || '',
+              userId
+            ]);
+          }
+        }
+      }
+
+      // Keep requests table synchronized
+      const exists = await dbGet('SELECT id FROM requests WHERE id = ?', [req.params.id]);
+      if (exists) {
+        const sql = `
+          UPDATE requests SET 
+            assure = ?, matricule = ?, membre = ?, prenoms = ?, sexe = ?, date_naissance = ?, lieu_naissance = ?, 
+            gs = ?, ref_identity_doc = ?, ref_marriage_certificate = ?, ref_scolarite_doc = ?, mother_name = ?, 
+            profession = ?, residence = ?, telephone = ?, lien = ?, date = ?, statut = ?, num_informatique = ?, 
+            num_cama = ?, justificatif = ?, rejection_reason = ?, document_image = ?, user_id = ?, email_notification_sent = ?
+          WHERE id = ?
+        `;
+        const params = [
+          r.assure, r.matricule, r.membre, r.prenoms, r.sexe, r.dateNaissance, r.lieuNaissance,
+          r.gs, r.refIdentityDoc, r.refMarriageCertificate, r.refScolariteDoc, r.motherName,
+          r.profession, r.residence, r.telephone, r.lien, r.date, r.statut, r.numInformatique,
+          r.numCama, r.justificatif, r.rejectionReason, r.documentImage, r.userId, r.emailNotificationSent ? 1 : 0,
+          req.params.id
+        ];
+        await dbRun(sql, params);
+      } else {
+        const sql = `
+          INSERT INTO requests (id, assure, matricule, membre, prenoms, sexe, date_naissance, lieu_naissance, gs, ref_identity_doc, ref_marriage_certificate, ref_scolarite_doc, mother_name, profession, residence, telephone, lien, date, statut, num_informatique, num_cama, justificatif, rejection_reason, document_image, user_id, email_notification_sent)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        const params = [
+          req.params.id, r.assure, r.matricule, r.membre, r.prenoms, r.sexe, r.dateNaissance, r.lieuNaissance, r.gs,
+          r.refIdentityDoc, r.refMarriageCertificate, r.refScolariteDoc, r.motherName, r.profession, r.residence,
+          r.telephone, r.lien, r.date || new Date().toISOString(), r.statut || 'En attente', r.numInformatique, r.numCama, r.justificatif, r.rejectionReason,
+          r.documentImage, r.userId, r.emailNotificationSent ? 1 : 0
+        ];
+        await dbRun(sql, params);
+      }
+
       res.json({ message: 'Dossier mis à jour avec succès.' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });

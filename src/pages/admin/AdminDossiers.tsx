@@ -22,7 +22,7 @@ import {
   Mail,
   Sparkles,
   RotateCcw,
-  History,
+  History as HistoryIcon,
   FileCheck2,
   User,
   MapPin,
@@ -34,6 +34,7 @@ import {
   Users
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import toast from 'react-hot-toast';
 import AdminUsers from './AdminUsers';
 import { 
   getRequests, 
@@ -69,7 +70,7 @@ export default function AdminDossiers() {
   const [users, setUsers] = useState<any[]>([]);
   useEffect(() => { getUsers().then(setUsers); }, []);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'Tous' | 'En attente' | 'Validé' | 'Rejeté' | 'Modif. à Valider'>('Tous');
+  const [statusFilter, setStatusFilter] = useState<'Tous' | 'En attente' | 'Validé' | 'Rejeté' | 'Modif. à Valider' | 'En cours de validation' | 'Incomplet'>('Tous');
   
   // Modals state
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
@@ -166,12 +167,16 @@ export default function AdminDossiers() {
 
   const handleOpenSubscriberInfo = async (matricule: string) => {
     const users = await getUsers();
-    const user = users?.find(u => u.matricule === matricule);
-    if (user) {
+    const rawUser = users?.find(u => u.matricule === matricule);
+    if (rawUser) {
+      const user = {
+        ...rawUser,
+        ...(rawUser.pendingModifications || {})
+      };
       setSelectedSubscriber(user);
       setIsSubscriberModalOpen(true);
     } else {
-      alert("Informations du souscripteur non trouvées.");
+      toast.error("Informations du souscripteur non trouvées.");
     }
   };
 
@@ -181,7 +186,7 @@ export default function AdminDossiers() {
     // Auto-generate CAMA card number on manual validation if none exists
     const finalRequests = updated.map(r => {
       if (r.id === id && newStatut === 'Validé' && !r.numCama) {
-        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        const randomSuffix = String(Math.floor(1 + Math.random() * 9999)).padStart(4, '0');
         return { ...r, numCama: `CM-2026-BF-${randomSuffix}` };
       }
       return r;
@@ -189,42 +194,56 @@ export default function AdminDossiers() {
 
     if (newStatut === 'Validé') {
       // Save updated list with generated CAMA card
+      let finalRes = finalRequests;
       for (const r of finalRequests) {
-        if (r.id === id) await editRequest(r);
+        if (r.id === id) finalRes = await editRequest(r);
       }
+      setRequests(finalRes);
+    } else {
+      setRequests(updated);
     }
 
     const req = finalRequests.find(r => r.id === id);
     if (req) {
-      const settings = await getSiteSettings();
-      const templates = settings.notificationTemplates;
-      
       const email = `${req.assure.toLowerCase().replace(/\s+/g, '.')}@defense.bf`;
       
-      let subject = `CAMA - ${newStatut === 'Validé' ? 'Approbation' : 'Rejet'} de votre dossier d'enrôlement (#${id})`;
-      let content = newStatut === 'Validé' 
-        ? `Cher militaire ${req.assure},\n\nNous vous informons que le dossier d'enrôlement FIF pour votre ayant droit ${req.membre} ${req.prenoms || ''} (${req.lien}) a été validé avec succès par la Direction Administrative de la CAMA.\n\nVotre numéro de carte CAMA définitif est : ${req.numCama || 'CM-2026-BF-8812'}.\n\nPrise en charge active dès aujourd'hui.`
-        : `Cher militaire ${req.assure},\n\nNous regrettons de vous informer que le dossier d'enrôlement pour ${req.membre} ${req.prenoms || ''} (${req.lien}) a été rejeté.\n\nMotif du rejet : ${reason || 'Pièce justificative non conforme ou illisible.'}\n\nVeuillez soumettre à nouveau le dossier sur votre tableau de bord avec les justificatifs demandés.`;
+      let subject = '';
+      let content = '';
 
-      // Use templates if configured
-      if (newStatut === 'Validé' && templates?.dossierValidated) {
-        subject = parseNotificationTemplate(templates.dossierValidated.subject, req, reason);
-        content = parseNotificationTemplate(templates.dossierValidated.body, req, reason);
-      } else if (newStatut === 'Rejeté' && templates?.dossierRejected) {
-        subject = parseNotificationTemplate(templates.dossierRejected.subject, req, reason);
-        content = parseNotificationTemplate(templates.dossierRejected.body, req, reason);
+      if (newStatut === 'Validé') {
+        subject = "Approbation et Activation des droits de prise en charge CAMA";
+        content = `Félicitations Adjudant ${req.assure},
+
+La demande d'enrôlement de votre ayant droit ${req.membre} ${req.prenoms || ''} a été approuvée par la commission d'instruction de la CAMA.
+
+Un numéro de carte unique lui a été attribué : ${req.numCama || 'CM-2026-BF-0042'}.
+
+Sa couverture médicale est désormais active. Vous pouvez télécharger sa fiche d'identification et attestation de droits depuis votre tableau de bord.
+
+Cordialement,
+L'équipe CAMA`;
+      } else {
+        subject = "Rejet de votre demande d'enrôlement CAMA";
+        content = `Bonjour,
+
+Votre demande d'enrôlement pour ${req.membre} ${req.prenoms || ''} a été rejetée pour le motif suivant : ${reason || 'Pièce justificative non conforme ou non éligible.'}.
+
+Vous pouvez contacter le service CAMA pour plus d'informations.
+
+Cordialement,
+L'équipe CAMA`;
       }
       
       sendSimulatedEmail(email, subject, content);
     }
 
     setRequests(finalRequests);
-    alert(`Dossier ${newStatut === 'Validé' ? 'validé' : 'rejeté'} avec succès. Un e-mail de notification officiel a été simulé et envoyé à l'utilisateur.`);
+    toast.success(`Dossier ${newStatut === 'Validé' ? 'validé' : 'rejeté'} avec succès. Un e-mail de notification officiel a été simulé et envoyé à l'utilisateur.`);
   };
 
   // Delete handler
   const handleDeleteRequest = (id: string) => {
-    if (confirm("Voulez-vous vraiment supprimer ce dossier d'enrôlement ?")) {
+    if (true) {
       deleteRequest(id).then(setRequests);
       if (selectedRequest?.id === id) {
         setSelectedRequest(null);
@@ -305,9 +324,9 @@ export default function AdminDossiers() {
         editRequest(req);
       });
       setRequests(updatedRequests);
-      alert(`${count} dossier(s) en attente ont été validés automatiquement après vérification de leur conformité administrative (références d'acte d'état civil, certificat scolaire et pièces justificatives présents).`);
+      toast.success(`${count} dossier(s) en attente ont été validés automatiquement après vérification de leur conformité administrative (références d'acte d'état civil, certificat scolaire et pièces justificatives présents).`);
     } else {
-      alert("Aucun dossier en attente ne remplit les conditions de conformité automatique (il manque des pièces d'identité pour les enfants de +15 ans, certificat scolaire pour les +21 ans, ou justificatifs téléversés).");
+      toast.error("Aucun dossier en attente ne remplit les conditions de conformité automatique (il manque des pièces d'identité pour les enfants de +15 ans, certificat scolaire pour les +21 ans, ou justificatifs téléversés).");
     }
   };
 
@@ -351,11 +370,11 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
   };
 
   const handleDeleteDocument = (req: Request) => {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer la pièce justificative d'état civil pour ${req.membre}? Cette action est irréversible.`)) {
+    if (true) {
       const updatedReq = { ...req, justificatif: '', documentImage: '' };
       editRequest(updatedReq).then(setRequests);
       setSelectedRequest(null);
-      alert("La pièce justificative a été supprimée avec succès.");
+      toast.success("La pièce justificative a été supprimée avec succès.");
     }
   };
 
@@ -371,24 +390,30 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
     if (!missingPieceRequest) return;
 
     const email = `${missingPieceRequest.assure.toLowerCase().replace(/\s+/g, '.')}@defense.bf`;
-    let subject = `CAMA - Action requise : Pièce manquante pour l'enrôlement (#${missingPieceRequest.id})`;
-    let content = `Cher militaire ${missingPieceRequest.assure},\n\nLors de l'examen de votre dossier d'enrôlement pour ${missingPieceRequest.membre} ${missingPieceRequest.prenoms || ''} (${missingPieceRequest.lien}), nos agents ont constaté qu'une pièce justificative est manquante ou non conforme.\n\nDocument requis : ${selectedMissingPiece}\n\nNote de l'agent : ${customMissingNote || 'Veuillez nous transmettre une copie lisible de cette pièce dans les plus brefs délais.'}\n\nVous pouvez téléverser ce justificatif en vous connectant sur votre Tableau de Bord CAMA.`;
+    const subject = "Action requise - Anomalie sur votre dossier d'enrôlement CAMA";
+    const motif = customMissingNote || `${selectedMissingPiece} manquant ou non conforme.`;
+    const content = `Bonjour Adjudant ${missingPieceRequest.assure},
+
+Après étude du dossier d'enrôlement de votre ayant droit ${missingPieceRequest.membre} ${missingPieceRequest.prenoms || ''}, nous avons constaté une anomalie : ${motif}.
+
+Merci de téléverser un nouveau document valide depuis votre espace personnel.
+
+Cordialement,
+L'équipe CAMA`;
 
     try {
-      const settings = await getSiteSettings();
-      const templates = settings.notificationTemplates;
-      if (templates?.dossierRejected) {
-        const reason = `Document requis: ${selectedMissingPiece}. Note: ${customMissingNote || 'Veuillez transmettre une copie lisible.'}`;
-        subject = parseNotificationTemplate(templates.dossierRejected.subject, missingPieceRequest, reason);
-        content = parseNotificationTemplate(templates.dossierRejected.body, missingPieceRequest, reason);
-      }
-    } catch (err) {
-      console.error("Error fetching site settings for missing piece email:", err);
+      const updatedRequest = { ...missingPieceRequest, statut: 'Incomplet' as const };
+      const updatedList = await editRequest(updatedRequest);
+      setRequests(updatedList);
+    } catch (err: any) {
+      console.error("Error updating request status for missing piece:", err);
+      toast.error(`Erreur lors de la mise à jour du dossier: ${err.message}`);
+      return;
     }
 
     sendSimulatedEmail(email, subject, content);
     setIsMissingPieceModalOpen(false);
-    alert(`E-mail de notification pour pièce manquante (${selectedMissingPiece}) envoyé avec succès à ${email}.`);
+    toast.success(`E-mail de notification pour anomalie envoyé avec succès à ${email}, et statut mis à jour en 'Incomplet'.`);
   };
 
   // Filter requests dynamically
@@ -527,7 +552,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
   };
 
   // Save/Publish edits or new folder
-  const handleSaveRequest = (e: React.FormEvent) => {
+  const handleSaveRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formAssure.trim() || !formMatricule.trim() || !formMembre.trim() || !formPrenoms.trim()) {
       setFormError('Veuillez remplir tous les champs obligatoires (*).');
@@ -592,7 +617,8 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
         ...newValues,
         modificationTraces: traces
       };
-      editRequest(updatedReq).then(setRequests);
+      const result = await editRequest(updatedReq);
+      setRequests(result);
     } else {
       // Add mode
       const newReq = {
@@ -617,10 +643,12 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
         numCama: formNumCama,
         documentImage: formDocumentImage
       };
-      addRequest(newReq).then(setRequests);
+      const result = await addRequest(newReq as any);
+      setRequests(result);
     }
 
     setIsFormModalOpen(false);
+    toast.success('Le dossier a été enregistré avec succès.');
   };
 
   // Handle Drag & Drop operations
@@ -651,7 +679,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
 
   const processFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert("Ce portail accepte uniquement les fichiers d'images (JPEG, PNG, WebP) pour l'acte d'état civil.");
+      toast.error("Ce portail accepte uniquement les fichiers d'images (JPEG, PNG, WebP) pour l'acte d'état civil.");
       return;
     }
     const reader = new FileReader();
@@ -722,7 +750,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
             <div className="flex items-center space-x-3 w-full md:w-auto flex-wrap gap-y-2">
               {/* Status selector */}
               <div className="flex items-center space-x-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200 text-xs font-bold text-gray-600">
-                {(['Tous', 'En attente', 'Validé', 'Rejeté', 'Modif. à Valider'] as const).map((filter) => (
+                {(['Tous', 'En attente', 'En cours de validation', 'Incomplet', 'Validé', 'Rejeté', 'Modif. à Valider'] as const).map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setStatusFilter(filter)}
@@ -873,14 +901,15 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-center">
-                              {req.statut === 'En attente' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200/50 uppercase"><Clock className="w-3 h-3 mr-1" /> {req.statut}</span>}
+                              {(req.statut === 'En attente' || req.statut === 'En cours de validation') && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-yellow-50 text-yellow-700 border border-yellow-200/50 uppercase"><Clock className="w-3 h-3 mr-1" /> À VALIDER</span>}
+                              {req.statut === 'Incomplet' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-red-50 text-red-700 border border-red-200/50 uppercase"><XCircle className="w-3 h-3 mr-1" /> INCOMPLET</span>}
                               {req.statut === 'Validé' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-green-50 text-green-700 border border-green-200/50 uppercase"><CheckCircle className="w-3 h-3 mr-1" /> {req.statut}</span>}
                               {req.statut === 'Rejeté' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-red-50 text-red-700 border border-red-200/50 uppercase"><XCircle className="w-3 h-3 mr-1" /> {req.statut}</span>}
                               {req.statut === 'Modif. à Valider' && <span className="px-2.5 py-1 inline-flex text-[10px] font-black rounded-full bg-purple-50 text-purple-700 border border-purple-200/50 uppercase"><RotateCcw className="w-3 h-3 mr-1" /> {req.statut}</span>}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center justify-center gap-2">
-                                {(req.statut === 'En attente' || req.statut === 'Modif. à Valider') && (
+                                {(req.statut === 'En attente' || req.statut === 'En cours de validation' || req.statut === 'Modif. à Valider' || req.statut === 'Incomplet') && (
                                   <>
                                     <button 
                                       onClick={(e) => { e.stopPropagation(); handleOpenMissingPieceModal(req); }}
@@ -889,15 +918,26 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                                     >
                                       <Mail className="w-3.5 h-3.5" />
                                     </button>
+                                    {(req.statut === 'En attente' || req.statut === 'En cours de validation' || req.statut === 'Modif. à Valider') && (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); handleValidate(req.id, 'Validé'); }}
+                                        className="text-white bg-[#008a4b] hover:bg-[#00703c] p-1.5 rounded-lg shadow-sm transition-all" 
+                                        title="Approuver"
+                                      >
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
                                     <button 
-                                      onClick={(e) => { e.stopPropagation(); handleValidate(req.id, 'Validé'); }}
-                                      className="text-white bg-[#008a4b] hover:bg-[#00703c] p-1.5 rounded-lg shadow-sm transition-all" 
-                                      title="Approuver"
-                                    >
-                                      <CheckCircle className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); handleValidate(req.id, 'Rejeté'); }}
+                                      onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        const reason = prompt("Veuillez saisir le motif du rejet définitif :");
+                                        if (reason === null) return;
+                                        if (!reason.trim()) {
+                                          toast.error("Le motif de rejet est obligatoire.");
+                                          return;
+                                        }
+                                        handleValidate(req.id, 'Rejeté', reason); 
+                                      }}
                                       className="text-white bg-red-500 hover:bg-red-600 p-1.5 rounded-lg shadow-sm transition-all" 
                                       title="Rejeter"
                                     >
@@ -1011,7 +1051,55 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                       {/* Completion Status Banner */}
                       <div className="space-y-4">
                         {(() => {
+                          const isTitulaire = selectedRequest.lien === 'Titulaire';
                           const isConjoint = selectedRequest.lien === 'Conjoint';
+                          
+                          if (isTitulaire) {
+                            const rawUser = users?.find(u => u.id === selectedRequest.userId || (selectedRequest.matricule && u.matricule === selectedRequest.matricule));
+                            const user = rawUser ? {
+                              ...rawUser,
+                              ...(rawUser.pendingModifications || {})
+                            } : undefined;
+                            const fields = user ? [
+                              { key: 'name', label: 'NOM', value: user.name, required: true },
+                              { key: 'prenoms', label: 'PRENOMS', value: user.prenoms, required: true },
+                              { key: 'sexe', label: 'SEXE', value: user.sexe, required: true },
+                              { key: 'matricule', label: 'MATRICULE MILITAIRE', value: user.matricule, required: true },
+                              { key: 'numInformatique', label: 'N° INFORMATIQUE', value: user.numInformatique, required: true },
+                              { key: 'grade', label: 'GRADE', value: user.grade, required: true },
+                              { key: 'categorie', label: 'CATEGORIE', value: user.categorie, required: true },
+                              { key: 'numIup', label: 'N° IUP', value: user.numIup, required: true },
+                              { key: 'structArmee', label: 'ARMEE', value: user.structArmee, required: true },
+                              { key: 'structRegion', label: 'REGION', value: user.structRegion, required: true },
+                              { key: 'structCorps', label: 'CORPS', value: user.structCorps || user.corp, required: true },
+                              { key: 'telephones', label: 'TELEPHONES', value: user.telephones || user.phone, required: true },
+                              { key: 'email', label: 'E-MAIL', value: user.email, required: true },
+                              { key: 'personneAPrevenir', label: 'PERSONNE A PREVENIR', value: user.personneAPrevenir, required: true },
+                              { key: 'personneAPrevenirTel', label: 'TEL (PERS. PREVENIR)', value: user.personneAPrevenirTel, required: true },
+                            ] : [];
+                            
+                            const missingFields = fields.filter(f => f.required && (!f.value || f.value.toString().trim() === ''));
+                            const isComplete = missingFields.length === 0;
+
+                            return (
+                              <div className={`p-4 rounded-xl border flex items-center gap-3 ${isComplete ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'}`}>
+                                <div className={`p-2 rounded-lg ${isComplete ? 'bg-emerald-500' : 'bg-amber-500'} text-white`}>
+                                  {isComplete ? <ShieldCheck className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5 animate-pulse" />}
+                                </div>
+                                <div>
+                                  <h4 className={`text-xs font-black uppercase tracking-tight ${isComplete ? 'text-emerald-900' : 'text-amber-900'}`}>
+                                    Dossier Administratif {isComplete ? 'Complet (100%)' : 'Incomplet'}
+                                  </h4>
+                                  <p className={`text-[10px] font-medium ${isComplete ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                    {isComplete 
+                                      ? "Toutes les informations administratives du militaire sont renseignées." 
+                                      : `${missingFields.length} champ(s) obligatoire(s) manquant(s) sur le profil.`}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          }
+
                           const fields = isConjoint ? [
                             { key: 'membre', label: 'Nom', value: selectedRequest.membre },
                             { key: 'prenoms', label: 'Prénoms', value: selectedRequest.prenoms },
@@ -1062,11 +1150,51 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
                           <UserPlus className="w-4 h-4 text-[#008a4b]" />
-                          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Section 2/3 : Identité de l'Ayant-Droit</h3>
+                          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">
+                            {selectedRequest.lien === 'Titulaire' 
+                              ? "Section 2/3 : Profil d'Enrôlement de l'Assuré Principal" 
+                              : "Section 2/3 : Identité de l'Ayant-Droit"}
+                          </h3>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                           {(() => {
+                            const isTitulaire = selectedRequest.lien === 'Titulaire';
                             const isConjoint = selectedRequest.lien === 'Conjoint';
+                            
+                            if (isTitulaire) {
+                              const rawUser = users?.find(u => u.id === selectedRequest.userId || (selectedRequest.matricule && u.matricule === selectedRequest.matricule));
+                              const user = rawUser ? {
+                                ...rawUser,
+                                ...(rawUser.pendingModifications || {})
+                              } : undefined;
+                              const fields = user ? [
+                                { label: 'Grade', value: user.grade, key: 'grade' },
+                                { label: 'Catégorie', value: user.categorie, key: 'categorie' },
+                                { label: 'N° IUP', value: user.numIup, key: 'numIup' },
+                                { label: 'N° Informatique', value: user.numInformatique, key: 'numInformatique' },
+                                { label: 'N° Carte CAMA', value: user.numCarteCama || user.numCama || selectedRequest.numCama, key: 'numCarteCama' },
+                                { label: 'Armée', value: user.structArmee, key: 'structArmee' },
+                                { label: 'Région', value: user.structRegion, key: 'structRegion' },
+                                { label: 'Corps / Unité', value: user.structCorps || user.corp, key: 'structCorps' },
+                                { label: 'Téléphones', value: user.telephones || user.phone, key: 'telephones' },
+                                { label: 'E-mail', value: user.email, key: 'email' },
+                                { label: 'Personne à Prévenir', value: user.personneAPrevenir, key: 'personneAPrevenir' },
+                                { label: 'Tél. Pers. à Prévenir', value: user.personneAPrevenirTel, key: 'personneAPrevenirTel' },
+                              ] : [];
+
+                              return fields.map((field) => {
+                                const isMissing = !field.value || field.value.toString().trim() === '';
+                                return (
+                                  <div key={field.key} className={`p-3 rounded-xl border transition-all ${isMissing ? 'bg-amber-50/40 border-dashed border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+                                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">{field.label}</p>
+                                    <p className={`text-xs font-bold uppercase truncate ${isMissing ? 'text-amber-500 italic' : 'text-gray-900'}`}>
+                                      {field.value || 'Non renseigné'}
+                                    </p>
+                                  </div>
+                                );
+                              });
+                            }
+
                             const fields = isConjoint ? [
                               { label: 'Nom', value: selectedRequest.membre, key: 'membre' },
                               { label: 'Prénoms', value: selectedRequest.prenoms, key: 'prenoms' },
@@ -1115,7 +1243,7 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                      <div className="space-y-4">
                         <div className="flex items-center justify-between border-b border-gray-100 pb-2">
                            <div className="flex items-center gap-2">
-                              <History className="w-4 h-4 text-purple-600" />
+                              <HistoryIcon className="w-4 h-4 text-purple-600" />
                               <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">Traces des Modifications (Audits)</h3>
                            </div>
                            <span className="text-[10px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">{selectedRequest.modificationTraces.length} actions</span>
@@ -1266,7 +1394,13 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
                       <>
                          <button 
                            onClick={async (e) => {
-                             handleValidate(selectedRequest.id, 'Rejeté');
+                             const reason = prompt("Veuillez saisir le motif du rejet définitif :");
+                             if (reason === null) return;
+                             if (!reason.trim()) {
+                               toast.error("Le motif de rejet est obligatoire.");
+                               return;
+                             }
+                             handleValidate(selectedRequest.id, 'Rejeté', reason);
                              setSelectedRequest(null);
                            }}
                            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm px-4 py-2 rounded-lg transition-colors shadow"
@@ -1812,250 +1946,249 @@ CAMA SECURED ENROLLMENT ARCHIVE SYSTEM
 
       {/* SUBSCRIBER INFO MODAL */}
       <AnimatePresence>
-        {isSubscriberModalOpen && selectedSubscriber && (() => {
-          const subscriberFields = [
-            { key: 'name', label: 'NOM', value: selectedSubscriber.name, section: 'identité' },
-            { key: 'prenoms', label: 'PRENOMS', value: selectedSubscriber.prenoms, section: 'identité' },
-            { key: 'sexe', label: 'SEXE', value: selectedSubscriber.sexe, section: 'identité' },
-            { key: 'matricule', label: 'MATRICULE MILITAIRE', value: selectedSubscriber.matricule, section: 'identité' },
-            { key: 'numInformatique', label: 'N° INFORMATIQUE', value: selectedSubscriber.numInformatique, section: 'identité' },
-            
-            { key: 'grade', label: 'GRADE', value: selectedSubscriber.grade, section: 'statut' },
-            { key: 'categorie', label: 'CATEGORIE', value: selectedSubscriber.categorie, section: 'statut' },
-            { key: 'numCim', label: 'N° CIM', value: selectedSubscriber.numCim, section: 'statut' },
-            { key: 'numCarteCama', label: 'N° Carte CAMA', value: selectedSubscriber.numCarteCama, section: 'statut' },
-            { key: 'numIup', label: 'N° IUP (3)', value: selectedSubscriber.numIup, section: 'statut' },
-            
-            { key: 'structArmee', label: 'ARMEE', value: selectedSubscriber.structArmee, section: 'rattachement' },
-            { key: 'structRegion', label: 'REGION', value: selectedSubscriber.structRegion, section: 'rattachement' },
-            { key: 'structCorps', label: 'CORPS', value: selectedSubscriber.structCorps || selectedSubscriber.corp, section: 'rattachement' },
-            { key: 'structService', label: 'SERVICE', value: selectedSubscriber.structService, section: 'rattachement' },
-            { key: 'structSection', label: 'SECTION', value: selectedSubscriber.structSection, section: 'rattachement' },
-            { key: 'structSousSection', label: 'SOUS-SECTION', value: selectedSubscriber.structSousSection, section: 'rattachement' },
-            
-            { key: 'telephones', label: 'TELEPHONES', value: selectedSubscriber.telephones || selectedSubscriber.phone, section: 'contacts' },
-            { key: 'email', label: 'E-MAIL', value: selectedSubscriber.email, section: 'contacts' },
-            { key: 'personneAPrevenir', label: 'PERSONNE A PREVENIR', value: selectedSubscriber.personneAPrevenir, section: 'contacts' },
-            { key: 'personneAPrevenirTel', label: 'TEL (PERS. PREVENIR)', value: selectedSubscriber.personneAPrevenirTel, section: 'contacts' },
-          ];
+        {isSubscriberModalOpen && selectedSubscriber && (
+           <motion.div 
+             initial={{ opacity: 0 }}
+             animate={{ opacity: 1 }}
+             exit={{ opacity: 0 }}
+             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+           >
+              <motion.div 
+                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                 animate={{ opacity: 1, scale: 1, y: 0 }}
+                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                 className="bg-white text-gray-900 rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-gray-200 flex flex-col"
+              >
+                 <div className="bg-[#008a4b] text-white px-6 py-4 flex justify-between items-center shadow-md">
+                    <div className="flex items-center gap-3">
+                       <User className="w-5 h-5 text-white animate-pulse" />
+                       <h3 className="font-bold uppercase tracking-tight text-sm">Fiche Militaire — 1. INFORMATIONS ADMINISTRATIVES DU MILITAIRE</h3>
+                    </div>
+                    <button 
+                      onClick={() => setIsSubscriberModalOpen(false)}
+                      className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                 </div>
 
-          const missingFields = subscriberFields.filter(f => !f.value || f.value.toString().trim() === '');
-          const isComplete = missingFields.length === 0;
+                 <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh] custom-scrollbar text-left">
+                    
+                    {/* COMPLETE / INCOMPLETE STATUS BANNER */}
+                    {(() => {
+                       const fields = [
+                          { key: 'name', label: 'NOM', value: selectedSubscriber.name, section: 'identité', required: true },
+                          { key: 'prenoms', label: 'PRENOMS', value: selectedSubscriber.prenoms, section: 'identité', required: true },
+                          { key: 'sexe', label: 'SEXE', value: selectedSubscriber.sexe, section: 'identité', required: true },
+                          { key: 'matricule', label: 'MATRICULE MILITAIRE', value: selectedSubscriber.matricule, section: 'identité', required: true },
+                          { key: 'numInformatique', label: 'N° INFORMATIQUE', value: selectedSubscriber.numInformatique, section: 'identité', required: true },
+                          { key: 'grade', label: 'GRADE', value: selectedSubscriber.grade, section: 'statut', required: true },
+                          { key: 'categorie', label: 'CATEGORIE', value: selectedSubscriber.categorie, section: 'statut', required: true },
+                          { key: 'numCim', label: 'N° CIM', value: selectedSubscriber.numCim, section: 'statut', required: false },
+                          { key: 'numCarteCama', label: 'N° Carte CAMA', value: selectedSubscriber.numCarteCama, section: 'statut', required: false },
+                          { key: 'numIup', label: 'N° IUP (3)', value: selectedSubscriber.numIup, section: 'statut', required: true },
+                          { key: 'structArmee', label: 'ARMEE', value: selectedSubscriber.structArmee, section: 'rattachement', required: true },
+                          { key: 'structRegion', label: 'REGION', value: selectedSubscriber.structRegion, section: 'rattachement', required: true },
+                          { key: 'structCorps', label: 'CORPS', value: selectedSubscriber.structCorps || selectedSubscriber.corp, section: 'rattachement', required: true },
+                          { key: 'structService', label: 'SERVICE', value: selectedSubscriber.structService, section: 'rattachement', required: false },
+                          { key: 'structSection', label: 'SECTION', value: selectedSubscriber.structSection, section: 'rattachement', required: false },
+                          { key: 'structSousSection', label: 'SOUS-SECTION', value: selectedSubscriber.structSousSection, section: 'rattachement', required: false },
+                          { key: 'telephones', label: 'TELEPHONES', value: selectedSubscriber.telephones || selectedSubscriber.phone, section: 'contacts', required: true },
+                          { key: 'email', label: 'E-MAIL', value: selectedSubscriber.email, section: 'contacts', required: true },
+                          { key: 'personneAPrevenir', label: 'PERSONNE A PREVENIR', value: selectedSubscriber.personneAPrevenir, section: 'contacts', required: true },
+                          { key: 'personneAPrevenirTel', label: 'TEL (PERS. PREVENIR)', value: selectedSubscriber.personneAPrevenirTel, section: 'contacts', required: true },
+                       ];
+                       const missing = fields.filter(f => f.required && (!f.value || f.value.toString().trim() === ''));
+                       const complete = missing.length === 0;
 
-          return (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
-            >
-               <motion.div 
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                  className="bg-white text-gray-900 rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-gray-200 flex flex-col"
-               >
-                  <div className="bg-[#008a4b] text-white px-6 py-4 flex justify-between items-center shadow-md">
-                     <div className="flex items-center gap-3">
-                        <User className="w-5 h-5 text-white animate-pulse" />
-                        <h3 className="font-bold uppercase tracking-tight text-sm">Fiche Militaire — 1. INFORMATIONS ADMINISTRATIVES DU MILITAIRE</h3>
-                     </div>
-                     <button 
+                       return (
+                          <>
+                             {complete ? (
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                                   <div className="p-2 bg-emerald-500 rounded-lg text-white">
+                                      <ShieldCheck className="w-6 h-6" />
+                                   </div>
+                                   <div>
+                                      <h4 className="text-sm font-black text-emerald-900 uppercase tracking-tight">Dossier Administratif Complet (100%)</h4>
+                                      <p className="text-xs text-emerald-700 font-medium mt-0.5">
+                                        Toutes les informations requises de la section 1 du formulaire ont été fournies avec succès.
+                                      </p>
+                                   </div>
+                                </div>
+                             ) : (
+                                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 shadow-sm">
+                                   <div className="p-2 bg-amber-500 rounded-lg text-white mt-0.5">
+                                      <ShieldAlert className="w-6 h-6 animate-pulse" />
+                                   </div>
+                                   <div className="flex-1">
+                                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                         <h4 className="text-sm font-black text-amber-950 uppercase tracking-tight">Profil Militaire Incomplet</h4>
+                                         <span className="px-2.5 py-0.5 text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 rounded-full uppercase">
+                                            {missing.length} champ(s) manquant(s)
+                                         </span>
+                                      </div>
+                                      <p className="text-xs text-amber-700 font-medium mt-1">
+                                        Certaines informations obligatoires de la section 1 de la fiche physique de la CAMA ne sont pas renseignées pour ce militaire.
+                                      </p>
+                                      <div className="mt-2 text-[10px] text-amber-800 font-bold flex flex-wrap gap-x-2 gap-y-1 bg-amber-100/50 p-2 rounded-lg border border-amber-200">
+                                         <span className="uppercase text-amber-950">Champs manquants :</span>
+                                         {missing.map((f) => (
+                                            <span key={f.key} className="bg-white px-1.5 py-0.5 rounded border border-amber-300/60 text-amber-900">
+                                               {f.label}
+                                            </span>
+                                         ))}
+                                      </div>
+                                   </div>
+                                </div>
+                             )}
+
+                             {/* ROW 1: INFORMATIONS DE L'IDENTITE */}
+                             <div className="space-y-3">
+                                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                                   <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.1</span>
+                                   <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Identité Civile & Militaire</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                   {fields.filter(f => f.section === 'identité').map(field => {
+                                      const isFieldMissing = !field.value || field.value.toString().trim() === '';
+                                      return (
+                                         <div 
+                                            key={field.key} 
+                                            className={`p-3 rounded-xl border transition-all ${
+                                               isFieldMissing 
+                                               ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
+                                               : 'bg-slate-50 border-slate-100 hover:border-slate-200'
+                                            }`}
+                                         >
+                                            <div className="flex items-center justify-between mb-1">
+                                               <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                               {isFieldMissing && (
+                                                  <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
+                                               )}
+                                            </div>
+                                            <span className={`font-black text-sm uppercase block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                               {field.value || 'Non renseigné'}
+                                            </span>
+                                         </div>
+                                      );
+                                   })}
+                                </div>
+                             </div>
+
+                             {/* ROW 2: STATUT ET CARTES */}
+                             <div className="space-y-3">
+                                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                                   <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.2</span>
+                                   <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Statuts, Grades & Cartes</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                                   {fields.filter(f => f.section === 'statut').map(field => {
+                                      const isFieldMissing = !field.value || field.value.toString().trim() === '';
+                                      return (
+                                         <div 
+                                            key={field.key} 
+                                            className={`p-3 rounded-xl border transition-all ${
+                                               isFieldMissing 
+                                               ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
+                                               : 'bg-slate-50 border-slate-100 hover:border-slate-200'
+                                            }`}
+                                         >
+                                            <div className="flex items-center justify-between mb-1">
+                                               <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                               {isFieldMissing && (
+                                                  <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
+                                               )}
+                                            </div>
+                                            <span className={`font-black text-sm uppercase block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                               {field.value || 'Non renseigné'}
+                                            </span>
+                                         </div>
+                                      );
+                                   })}
+                                </div>
+                             </div>
+
+                             {/* ROW 3: STRUCTURE DE RATTACHEMENT */}
+                             <div className="space-y-3">
+                                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                                   <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.3</span>
+                                   <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Structure de Rattachement</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                                   {fields.filter(f => f.section === 'rattachement').map(field => {
+                                      const isFieldMissing = !field.value || field.value.toString().trim() === '';
+                                      return (
+                                         <div 
+                                            key={field.key} 
+                                            className={`p-3 rounded-xl border transition-all ${
+                                               isFieldMissing 
+                                               ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
+                                               : 'bg-slate-50 border-slate-100 hover:border-slate-200'
+                                            }`}
+                                         >
+                                            <div className="flex items-center justify-between mb-1">
+                                               <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                               {isFieldMissing && (
+                                                  <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
+                                               )}
+                                            </div>
+                                            <span className={`font-black text-xs uppercase block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                               {field.value || 'Non renseigné'}
+                                            </span>
+                                         </div>
+                                      );
+                                   })}
+                                </div>
+                             </div>
+
+                             {/* ROW 4: CONTACTS & COORDONNÉES */}
+                             <div className="space-y-3">
+                                <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                                   <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.4</span>
+                                   <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Contacts & Personnes à Prévenir</h4>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                   {fields.filter(f => f.section === 'contacts').map(field => {
+                                      const isFieldMissing = !field.value || field.value.toString().trim() === '';
+                                      return (
+                                         <div 
+                                            key={field.key} 
+                                            className={`p-3 rounded-xl border transition-all ${
+                                               isFieldMissing 
+                                               ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
+                                               : 'bg-slate-50 border-slate-100 hover:border-slate-200'
+                                            }`}
+                                         >
+                                            <div className="flex items-center justify-between mb-1">
+                                               <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                               {isFieldMissing && (
+                                                  <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
+                                               )}
+                                            </div>
+                                            <span className={`font-black text-xs block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                               {field.value || 'Non renseigné'}
+                                            </span>
+                                         </div>
+                                      );
+                                   })}
+                                </div>
+                             </div>
+                          </>
+                       );
+                    })()}
+                 </div>
+                 
+                 <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end gap-3 shadow-inner">
+                    <button 
                        onClick={() => setIsSubscriberModalOpen(false)}
-                       className="p-1.5 hover:bg-white/20 rounded-full transition-colors text-white"
-                     >
-                       <X className="w-5 h-5" />
-                     </button>
-                  </div>
-
-                  <div className="p-6 space-y-6 overflow-y-auto max-h-[75vh] custom-scrollbar text-left">
-                     
-                     {/* COMPLETE / INCOMPLETE STATUS BANNER */}
-                     {isComplete ? (
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 shadow-sm">
-                           <div className="p-2 bg-emerald-500 rounded-lg text-white">
-                              <ShieldCheck className="w-6 h-6" />
-                           </div>
-                           <div>
-                              <h4 className="text-sm font-black text-emerald-900 uppercase tracking-tight">Dossier Administratif Complet (100%)</h4>
-                              <p className="text-xs text-emerald-700 font-medium mt-0.5">
-                                Toutes les informations requises de la section 1 du formulaire ont été fournies avec succès.
-                              </p>
-                           </div>
-                        </div>
-                     ) : (
-                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 shadow-sm">
-                           <div className="p-2 bg-amber-500 rounded-lg text-white mt-0.5">
-                              <ShieldAlert className="w-6 h-6 animate-pulse" />
-                           </div>
-                           <div className="flex-1">
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                 <h4 className="text-sm font-black text-amber-950 uppercase tracking-tight">Profil Militaire Incomplet</h4>
-                                 <span className="px-2.5 py-0.5 text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 rounded-full uppercase">
-                                    {missingFields.length} champ(s) manquant(s)
-                                 </span>
-                              </div>
-                              <p className="text-xs text-amber-700 font-medium mt-1">
-                                Certaines informations obligatoires de la section 1 de la fiche physique de la CAMA ne sont pas renseignées pour ce militaire.
-                              </p>
-                              <div className="mt-2 text-[10px] text-amber-800 font-bold flex flex-wrap gap-x-2 gap-y-1 bg-amber-100/50 p-2 rounded-lg border border-amber-200">
-                                 <span className="uppercase text-amber-950">Champs manquants :</span>
-                                 {missingFields.map((f) => (
-                                    <span key={f.key} className="bg-white px-1.5 py-0.5 rounded border border-amber-300/60 text-amber-900">
-                                       {f.label}
-                                    </span>
-                                 ))}
-                              </div>
-                           </div>
-                        </div>
-                     )}
-
-                     {/* ROW 1: INFORMATIONS DE L'IDENTITE */}
-                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                           <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.1</span>
-                           <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Identité Civile & Militaire</h4>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                           {subscriberFields.filter(f => f.section === 'identité').map(field => {
-                              const isFieldMissing = !field.value || field.value.toString().trim() === '';
-                              return (
-                                 <div 
-                                    key={field.key} 
-                                    className={`p-3 rounded-xl border transition-all ${
-                                       isFieldMissing 
-                                       ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
-                                       : 'bg-slate-50 border-slate-100 hover:border-slate-200'
-                                    }`}
-                                 >
-                                    <div className="flex items-center justify-between mb-1">
-                                       <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
-                                       {isFieldMissing && (
-                                          <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
-                                       )}
-                                    </div>
-                                    <span className={`font-black text-sm uppercase block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
-                                       {field.value || 'Non renseigné'}
-                                    </span>
-                                 </div>
-                              );
-                           })}
-                        </div>
-                     </div>
-
-                     {/* ROW 2: STATUT ET CARTES */}
-                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                           <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.2</span>
-                           <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Statuts, Grades & Cartes</h4>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                           {subscriberFields.filter(f => f.section === 'statut').map(field => {
-                              const isFieldMissing = !field.value || field.value.toString().trim() === '';
-                              return (
-                                 <div 
-                                    key={field.key} 
-                                    className={`p-3 rounded-xl border transition-all ${
-                                       isFieldMissing 
-                                       ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
-                                       : 'bg-slate-50 border-slate-100 hover:border-slate-200'
-                                    }`}
-                                 >
-                                    <div className="flex items-center justify-between mb-1">
-                                       <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
-                                       {isFieldMissing && (
-                                          <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
-                                       )}
-                                    </div>
-                                    <span className={`font-black text-sm uppercase block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
-                                       {field.value || 'Non renseigné'}
-                                    </span>
-                                 </div>
-                              );
-                           })}
-                        </div>
-                     </div>
-
-                     {/* ROW 3: STRUCTURE DE RATTACHEMENT */}
-                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                           <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.3</span>
-                           <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Structure de Rattachement</h4>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-                           {subscriberFields.filter(f => f.section === 'rattachement').map(field => {
-                              const isFieldMissing = !field.value || field.value.toString().trim() === '';
-                              return (
-                                 <div 
-                                    key={field.key} 
-                                    className={`p-3 rounded-xl border transition-all ${
-                                       isFieldMissing 
-                                       ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
-                                       : 'bg-slate-50 border-slate-100 hover:border-slate-200'
-                                    }`}
-                                 >
-                                    <div className="flex items-center justify-between mb-1">
-                                       <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
-                                       {isFieldMissing && (
-                                          <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
-                                       )}
-                                    </div>
-                                    <span className={`font-black text-xs uppercase block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
-                                       {field.value || 'Non renseigné'}
-                                    </span>
-                                 </div>
-                              );
-                           })}
-                        </div>
-                     </div>
-
-                     {/* ROW 4: CONTACTS & COORDONNÉES */}
-                     <div className="space-y-3">
-                        <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
-                           <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.4</span>
-                           <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Contacts & Personnes à Prévenir</h4>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                           {subscriberFields.filter(f => f.section === 'contacts').map(field => {
-                              const isFieldMissing = !field.value || field.value.toString().trim() === '';
-                              return (
-                                 <div 
-                                    key={field.key} 
-                                    className={`p-3 rounded-xl border transition-all ${
-                                       isFieldMissing 
-                                       ? 'bg-amber-50/40 border-dashed border-amber-200 shadow-inner' 
-                                       : 'bg-slate-50 border-slate-100 hover:border-slate-200'
-                                    }`}
-                                 >
-                                    <div className="flex items-center justify-between mb-1">
-                                       <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
-                                       {isFieldMissing && (
-                                          <span className="text-[8px] font-black text-amber-600 bg-amber-100 px-1 rounded uppercase">Manquant</span>
-                                       )}
-                                    </div>
-                                    <span className={`font-black text-xs block truncate ${isFieldMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
-                                       {field.value || 'Non renseigné'}
-                                    </span>
-                                 </div>
-                              );
-                           })}
-                        </div>
-                     </div>
-
-                  </div>
-                  
-                  <div className="bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end gap-3 shadow-inner">
-                     <button 
-                        onClick={() => setIsSubscriberModalOpen(false)}
-                        className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold text-sm px-6 py-2.5 rounded-xl transition-all uppercase tracking-wider"
-                     >
-                        Fermer
-                     </button>
-                  </div>
-               </motion.div>
-            </motion.div>
-          );
-        })()}
+                       className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold text-sm px-6 py-2.5 rounded-xl transition-all uppercase tracking-wider"
+                    >
+                       Fermer
+                    </button>
+                 </div>
+              </motion.div>
+           </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

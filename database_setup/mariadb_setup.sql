@@ -43,7 +43,11 @@ CREATE TABLE users (
     struct_sous_section VARCHAR(100),
     telephones VARCHAR(255),
     personne_a_prevenir VARCHAR(255),
-    personne_a_prevenir_tel VARCHAR(100)
+    personne_a_prevenir_tel VARCHAR(100),
+    statut VARCHAR(50) DEFAULT 'Incomplet',
+    pending_modifications LONGTEXT,
+    modification_traces LONGTEXT,
+    num_dossier VARCHAR(100)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2. Table des DOSSIERS / DEMANDES (Requests)

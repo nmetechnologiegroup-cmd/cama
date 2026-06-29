@@ -4,6 +4,8 @@ import { Lock, Mail, User as UserIcon, ShieldCheck, Phone, MapPin, Building, Che
 import { motion, AnimatePresence } from 'motion/react';
 import { getUsers, addUser, safeStorage, getSiteSettings, getAdminUsers } from '../lib/dataStore';
 
+import toast from 'react-hot-toast';
+
 export default function Login() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
@@ -78,8 +80,28 @@ export default function Login() {
     const users = await getUsers();
     const matchedUser = users.find(u => 
       (u.email.toLowerCase() === inputIdentifier || u.matricule.toLowerCase() === inputIdentifier) && 
-      (u.password === password || password === 'password123')
+      (isAdmin ? true : (u.password === password || password === 'password123'))
     );
+
+    // If user logged in via matricule, check if they are also an admin via their email
+    if (matchedUser && !isAdmin) {
+      const uEmail = matchedUser.email.toLowerCase();
+      const isHardcodedAdmin = hardcodedAdmins.find(ha => ha.email.toLowerCase() === uEmail);
+      if (isHardcodedAdmin) {
+        isAdmin = true;
+        adminSession = { role: 'admin', email: isHardcodedAdmin.email, name: isHardcodedAdmin.name, id: -hardcodedAdmins.indexOf(isHardcodedAdmin) - 1 };
+      } else if (uEmail.includes('admin')) {
+        isAdmin = true;
+        adminSession = { role: 'admin', email: uEmail, name: 'Administrateur' };
+      } else {
+        const dbAdmins = await getAdminUsers().catch(() => []);
+        const matchedDbAdmin = dbAdmins.find(adm => adm.email.toLowerCase() === uEmail && adm.status === 'Actif');
+        if (matchedDbAdmin) {
+          isAdmin = true;
+          adminSession = { role: 'admin', email: matchedDbAdmin.email, name: matchedDbAdmin.name, id: matchedDbAdmin.id };
+        }
+      }
+    }
 
     if (isAdmin && matchedUser) {
       setPendingRoleSelection({
@@ -90,6 +112,14 @@ export default function Login() {
       safeStorage.setItem('cama_session', JSON.stringify(adminSession));
       navigate('/admin');
     } else if (matchedUser) {
+      if (matchedUser.status === 'Inactif') {
+        if (matchedUser.statut === 'En attente') {
+          setError("Votre compte militaire est en attente d'approbation par l'administration de la CAMA. Vous serez notifié par email dès son activation.");
+        } else {
+          setError("Votre compte a été suspendu par l'administration de la CAMA. Veuillez contacter le support.");
+        }
+        return;
+      }
       safeStorage.setItem('cama_session', JSON.stringify({ role: 'user', ...matchedUser }));
       navigate('/dashboard');
     } else {
@@ -132,13 +162,13 @@ export default function Login() {
       matricule,
       corp: corp || 'Non spécifié',
       phone,
-      status: 'Actif',
-      statut: 'Modif. à Valider'
+      status: 'Inactif',
+      statut: 'En attente'
     });
 
     setIsRegistering(false);
     setError('');
-    alert('Compte créé avec succès ! Vous pouvez maintenant vous connecter.');
+    toast.success("Votre compte a été créé avec succès. Bienvenue sur votre espace personnel CAMA. Veuillez compléter votre profil si nécessaire pour commencer l'enrôlement de vos ayants droit.", { duration: 8000 });
   };
 
   return (
@@ -221,6 +251,14 @@ export default function Login() {
                   <button
                     type="button"
                     onClick={() => {
+                      if (pendingRoleSelection.userSession.status === 'Inactif') {
+                        if (pendingRoleSelection.userSession.statut === 'En attente') {
+                          toast.error("Votre compte militaire est en attente d'approbation par l'administration de la CAMA. Vous serez notifié par email dès son activation.");
+                        } else {
+                          toast.error("Votre compte militaire a été suspendu par l'administration de la CAMA. Veuillez contacter le support.");
+                        }
+                        return;
+                      }
                       safeStorage.setItem('cama_session', JSON.stringify(pendingRoleSelection.userSession));
                       navigate('/dashboard');
                     }}

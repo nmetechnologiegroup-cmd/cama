@@ -4,6 +4,7 @@
  */
 
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import ScrollToTop from './components/ScrollToTop';
 import { LanguageProvider } from './lib/LanguageContext';
 import { ThemeProvider } from './lib/ThemeContext';
@@ -35,6 +36,7 @@ export default function App() {
     <ThemeProvider>
       <LanguageProvider>
         <Router>
+          <Toaster position="top-center" toastOptions={{ duration: 4000, style: { background: '#333', color: '#fff' } }} />
           <ScrollToTop />
           <Routes>
             {/* Public & Assuré Routes */}

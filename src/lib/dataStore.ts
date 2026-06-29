@@ -28,7 +28,7 @@ export interface Request {
   telephone?: string;
   lien: string;
   date: string;
-  statut: 'En attente' | 'Validé' | 'Rejeté' | 'Modif. à Valider';
+  statut: 'Incomplet' | 'En cours de validation' | 'Validé' | 'Rejeté' | 'En attente' | 'Modif. à Valider';
   numInformatique?: string;
   numCama?: string;
   justificatif?: string;
@@ -66,7 +66,7 @@ export interface User {
   telephones?: string;
   personneAPrevenir?: string;
   personneAPrevenirTel?: string;
-  statut?: 'Validé' | 'Modif. à Valider';
+  statut?: 'Incomplet' | 'En cours de validation' | 'Validé' | 'En attente' | 'Modif. à Valider';
   pendingModifications?: Partial<User>;
   modificationTraces?: ModificationTrace[];
   numDossier?: string;
@@ -385,7 +385,8 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
 }
 
 export async function getRequests(): Promise<Request[]> {
-  return fetchAPI('/requests');
+  const reqs = await fetchAPI('/requests');
+  return reqs.filter((r: any) => r.lien !== 'Titulaire');
 }
 
 export async function updateRequestStatus(id: string, statut: 'Validé' | 'Rejeté'): Promise<Request[]> {

@@ -37,7 +37,11 @@ CREATE TABLE users (
     struct_sous_section TEXT,
     telephones TEXT,
     personne_a_prevenir TEXT,
-    personne_a_prevenir_tel TEXT
+    personne_a_prevenir_tel TEXT,
+    statut TEXT DEFAULT 'Incomplet',
+    pending_modifications TEXT,
+    modification_traces TEXT,
+    num_dossier TEXT
 );
 
 -- 2. Table des DOSSIERS / DEMANDES (Requests)

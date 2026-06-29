@@ -7,7 +7,7 @@ import {
   Edit, 
   AlertCircle, 
   Upload, 
-  History, 
+  History as HistoryIcon,
   User as UserIcon, 
   ShieldCheck, 
   Mail, 
@@ -26,6 +26,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
+import toast from 'react-hot-toast';
 import { 
   safeStorage, 
   getRequests, 
@@ -111,13 +112,48 @@ export default function Dashboard() {
       navigate('/admin');
       return;
     }
-    setCurrentUser(session);
-    setProfileData(session);
-    refreshData(session.id);
+    if (session.status === 'Inactif') {
+      safeStorage.removeItem('cama_session');
+      if (session.statut === 'En attente') {
+        toast.error("Votre compte militaire est en attente d'approbation par l'administration de la CAMA. Vous serez notifié par email dès son activation.");
+      } else {
+        toast.error("Votre compte a été suspendu par l'administration de la CAMA. Veuillez contacter le support.");
+      }
+      navigate('/login');
+      return;
+    }
+
+    // Re-fetch latest user data from server to reflect admin approvals/changes
+    import('../lib/dataStore').then(ds => {
+      ds.getUsers().then(users => {
+        const latestUser = users.find(u => u.id === session.id);
+        if (latestUser) {
+          if (latestUser.status === 'Inactif') {
+            safeStorage.removeItem('cama_session');
+            if (latestUser.statut === 'En attente') {
+              toast.error("Votre compte militaire est en attente d'approbation par l'administration de la CAMA. Vous serez notifié par email dès son activation.");
+            } else {
+              toast.error("Votre compte a été suspendu par l'administration de la CAMA. Veuillez contacter le support.");
+            }
+            navigate('/login');
+            return;
+          }
+          const updatedSession = { ...session, ...latestUser };
+          setCurrentUser(updatedSession);
+          setProfileData(updatedSession);
+          safeStorage.setItem('cama_session', JSON.stringify(updatedSession));
+          refreshData(latestUser.id);
+        } else {
+          setCurrentUser(session);
+          setProfileData(session);
+          refreshData(session.id);
+        }
+      });
+    });
   }, [navigate]);
 
   const refreshData = (userId: number) => {
-    getRequests().then(reqs => setRequests(reqs.filter(r => r.userId === userId)));
+    getRequests().then(reqs => setRequests(reqs.filter(r => r.userId === userId && r.lien !== 'Titulaire')));
     getLogs(userId).then(setLogs);
   };
 
@@ -145,15 +181,15 @@ export default function Dashboard() {
       const validFiles = (Array.from(files) as File[]).filter(file => {
         const isValid = file.type.startsWith('image/') || file.type === 'application/pdf';
         if (!isValid) {
-          alert(`Le fichier "${file.name}" n'est pas une image ou un PDF.`);
+          toast.error(`Le fichier "${file.name}" n'est pas une image ou un PDF.`);
         }
         return isValid;
       });
 
       const readersPromises = validFiles.map(file => {
         return new Promise<string>((resolve, reject) => {
-          if (file.size > 2 * 1024 * 1024) {
-            reject(new Error(`Le fichier "${file.name}" est trop volumineux (max 2Mo)`));
+          if (file.size > 10 * 1024 * 1024) {
+            reject(new Error(`Le fichier "${file.name}" est trop volumineux (max 10 Mo)`));
             return;
           }
           const reader = new FileReader();
@@ -178,23 +214,23 @@ export default function Dashboard() {
           });
         })
         .catch(err => {
-          alert(err.message);
+          toast.error(err.message);
         });
     }
   };
 
-  const handleProfileSubmit = (e: React.FormEvent) => {
+  const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
     // Validate phone fields
     const phoneRegex = /^\+?[0-9\s\-()]{8,20}$/;
     if (profileData.telephones && !phoneRegex.test(profileData.telephones)) {
-      alert("Erreur : Le numéro de téléphone du militaire n'est pas valide (minimum 8 chiffres, ex: 70001122).");
+      toast.error("Erreur : Le numéro de téléphone du militaire n'est pas valide (minimum 8 chiffres, ex: 70001122).");
       return;
     }
     if (profileData.personneAPrevenirTel && !phoneRegex.test(profileData.personneAPrevenirTel)) {
-      alert("Erreur : Le numéro de téléphone de la personne à prévenir n'est pas valide (minimum 8 chiffres, ex: 75001122).");
+      toast.error("Erreur : Le numéro de téléphone de la personne à prévenir n'est pas valide (minimum 8 chiffres, ex: 75001122).");
       return;
     }
 
@@ -206,11 +242,13 @@ export default function Dashboard() {
     const now = new Date().toLocaleString('fr-FR');
     
     let hasChanges = false;
+    const cleanModifications: any = {};
     Object.keys(profileData).forEach(key => {
       const oldVal = (currentUser as any)[key] || '';
       const newVal = (profileData as any)[key] || '';
       if (oldVal !== newVal && !['modificationTraces', 'pendingModifications', 'statut'].includes(key)) {
         hasChanges = true;
+        cleanModifications[key] = newVal;
         traces.push({
           id: `tr-${Math.random().toString(36).substr(2, 9)}`,
           field: key,
@@ -227,23 +265,47 @@ export default function Dashboard() {
       return;
     }
 
+    const nextUser = { ...currentUser, ...cleanModifications };
+    let newStatut = isProfileComplete(nextUser as User) ? 'En attente' : 'Incomplet';
+
+    if (currentUser.statut === 'Validé' || currentUser.statut === 'Actif' || currentUser.status === 'Actif') {
+      if (isProfileComplete(nextUser as User)) {
+         newStatut = 'Modif. à Valider';
+      }
+    }
+
     const updatedUser: User = {
       ...currentUser,
-      pendingModifications: { ...profileData },
-      statut: 'Modif. à Valider',
+      pendingModifications: cleanModifications,
+      statut: newStatut as any,
       modificationTraces: traces
     } as User;
 
-    editUser(updatedUser);
+    await editUser(updatedUser);
     setCurrentUser(updatedUser);
     safeStorage.setItem('cama_session', JSON.stringify(updatedUser));
-    addLog(currentUser.id, `Mise à jour des informations administratives soumise pour validation admin.`);
-    refreshData(currentUser.id);
+    await addLog(currentUser.id, `Mise à jour des informations administratives. Nouveau statut: ${newStatut}`);
+    await refreshData(currentUser.id);
     setShowProfileModal(false);
-    alert('Vos modifications administratives ont été soumises pour validation à l\'administration CAMA.');
+    
+    if (newStatut === 'En attente') {
+      toast.success('Vos informations sont maintenant complètes et ont été soumises pour validation.');
+    } else if (newStatut === 'Modif. à Valider') {
+      toast.success('Vos modifications ont été soumises pour validation par l\'administration.');
+    } else {
+      toast('Informations enregistrées, mais votre profil est toujours incomplet.', { icon: '⚠️' });
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const isRequestComplete = (req: Partial<Request>) => {
+    return req.membre && req.prenoms && req.dateNaissance && req.lieuNaissance && req.justificatif;
+  };
+  
+  const getInitialStatut = (req: Partial<Request>) => {
+    return isRequestComplete(req) ? 'En attente' : 'Incomplet';
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
 
@@ -251,7 +313,7 @@ export default function Dashboard() {
     if (formData.telephone) {
       const phoneRegex = /^\+?[0-9\s\-()]{8,20}$/;
       if (!phoneRegex.test(formData.telephone)) {
-        alert("Erreur : Veuillez saisir un numéro de téléphone de contact valide (minimum 8 chiffres, ex: +226 70 00 11 22).");
+        toast.error("Erreur : Veuillez saisir un numéro de téléphone de contact valide (minimum 8 chiffres, ex: +226 70 00 11 22).");
         return;
       }
     }
@@ -260,31 +322,46 @@ export default function Dashboard() {
     const age = calculateAge(formData.dateNaissance || '');
     if (formData.lien === 'Enfant') {
       if (age > 26) {
-        alert("L'enrôlement des enfants est limité aux personnes de 0 à 26 ans révolus selon le règlement.");
+        toast.error("L'enrôlement des enfants de plus de 26 ans n'est pas autorisé.");
         return;
       }
       if (age > 15 && !formData.refIdentityDoc) {
-        if (!confirm("Attention: Conformément à la réglementation en vigueur au Burkina Faso, les références d'un document d'identité sont obligatoires pour les enfants de plus de 15 ans. Voulez-vous continuer sans cette référence ?")) {
-          return;
-        }
+        toast.error("Pour les enfants de plus de 15 ans, la référence de la pièce d'identité est obligatoire pour valider la Fiche d'Identification Famille (FIF).");
+        return;
       }
       if (age > 21 && !formData.refScolariteDoc) {
-        alert("Erreur: Pour les enfants de plus de 21 ans, un certificat ou acte de scolarité valide est strictement obligatoire.");
+        toast.error("Pour les enfants majeurs de plus de 21 ans, un certificat de scolarité ou d'apprentissage en cours de validité est obligatoire.");
         return;
       }
     }
 
+    if (formData.lien === 'Conjoint' && !formData.refMarriageCertificate) {
+      toast.error("Erreur : Pour un(e) conjoint(e), l'acte de mariage officiel est obligatoire.");
+      return;
+    }
+
+    if (!formData.justificatif) {
+      toast.error("La copie de la pièce d'identité ou de l'acte d'état civil est obligatoire pour tout membre.");
+      return;
+    }
+
     if (editingRequest) {
       // Modification must be submitted for validation
-      const updated = editRequest({
+      let nextStatut = getInitialStatut({...editingRequest, ...formData});
+      if (editingRequest.statut === 'Validé' || editingRequest.statut === 'Modif. à Valider') {
+         if (isRequestComplete({...editingRequest, ...formData})) {
+           nextStatut = 'Modif. à Valider';
+         }
+      }
+      await editRequest({
         ...editingRequest,
         ...formData,
         membre: formData.membre?.toUpperCase() || '',
-        statut: 'Modif. à Valider' // Force re-validation for any edit by user
+        statut: nextStatut as any
       } as Request);
-      addLog(currentUser.id, `Modification du membre : ${formData.membre?.toUpperCase()} ${formData.prenoms} (Soumis pour validation)`);
+      await addLog(currentUser.id, `Modification du membre : ${formData.membre?.toUpperCase()} ${formData.prenoms} (Soumis pour validation)`);
     } else {
-      addRequest({
+      await addRequest({
         assure: currentUser.name,
         matricule: currentUser.matricule,
         userId: currentUser.id,
@@ -305,12 +382,12 @@ export default function Dashboard() {
         numInformatique: formData.numInformatique,
         numCama: formData.numCama,
         justificatif: formData.justificatif,
-        statut: 'En attente'
+        statut: getInitialStatut(formData)
       });
-      addLog(currentUser.id, `Ajout d'un nouveau membre (${formData.lien}) : ${formData.membre?.toUpperCase()} ${formData.prenoms}`);
+      await addLog(currentUser.id, `Ajout d'un nouveau membre (${formData.lien}) : ${formData.membre?.toUpperCase()} ${formData.prenoms}`);
     }
 
-    refreshData(currentUser.id);
+    await refreshData(currentUser.id);
     setShowModal(false);
     setEditingRequest(null);
     setFormData({ 
@@ -335,7 +412,7 @@ export default function Dashboard() {
   };
 
   const handleDelete = (id: string) => {
-    if (!currentUser || !window.confirm('Voulez-vous vraiment supprimer ce membre ?')) return;
+    if (!currentUser) return;
     const reqToDelete = requests.find(r => r.id === id);
     deleteRequest(id);
     addLog(currentUser.id, `Suppression du membre : ${reqToDelete?.membre} ${reqToDelete?.prenoms}`);
@@ -580,19 +657,27 @@ export default function Dashboard() {
       setPdfGenerating(false);
     } catch (err) {
       console.error(err);
-      alert("Erreur lors de la génération du PDF.");
+      toast.error("Erreur lors de la génération du PDF.");
       setPdfGenerating(false);
     }
   };
 
   const getStatusBadge = (statut: string) => {
     if (statut === 'Validé') return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-green-100 text-green-800 border border-green-200/50 flex items-center"><CheckCircle className="w-3.5 h-3.5 mr-1" /> {statut}</span>;
-    if (statut === 'En attente' || statut === 'Modif. à Valider') return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200/50 flex items-center"><Clock className="w-3.5 h-3.5 mr-1" /> {statut === 'Modif. à Valider' ? 'Modification en attente' : statut}</span>;
+    if (statut === 'En attente' || statut === 'En cours de validation' || statut === 'Modif. à Valider') return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-yellow-100 text-yellow-800 border border-yellow-200/50 flex items-center"><Clock className="w-3.5 h-3.5 mr-1" /> {statut}</span>;
+    if (statut === 'Incomplet') return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-red-100 text-red-800 border border-red-200/50 flex items-center"><AlertCircle className="w-3.5 h-3.5 mr-1" /> Dossier Incomplet</span>;
     return <span className="px-2.5 py-1 inline-flex text-xs leading-5 font-bold rounded-full bg-red-100 text-red-800 border border-red-200/50 flex items-center"><AlertCircle className="w-3.5 h-3.5 mr-1" /> {statut}</span>;
   };
 
-  // Check if profile has military admin details filled
-  const isProfileComplete = currentUser && currentUser.numIup && currentUser.grade && currentUser.structArmee;
+  // Check if profile has military admin details filled (or pending)
+  const isProfileComplete = (user: any) => {
+    return !!(user.name && user.prenoms && user.sexe && user.matricule && user.numInformatique && user.grade && user.categorie && user.numIup && user.structArmee && user.structRegion && (user.structCorps || user.corp) && (user.telephones || user.phone) && user.email && user.personneAPrevenir && user.personneAPrevenirTel);
+  };
+
+  const hasMilitaryDetails = currentUser && isProfileComplete({ ...currentUser, ... (currentUser.pendingModifications || {}) });
+  const isPendingValidation = currentUser?.statut === 'En cours de validation' || currentUser?.statut === 'Modif. à Valider';
+  const isValidated = currentUser?.statut === 'Validé';
+  const isProfileIncomplete = currentUser?.statut === 'Incomplet' || !hasMilitaryDetails;
 
   return (
     <div className="min-h-screen bg-slate-50 py-10 text-left">
@@ -607,6 +692,16 @@ export default function Dashboard() {
           <div className="flex gap-3">
             <button 
               onClick={async () => { 
+                if (!isValidated) {
+                  if (isProfileIncomplete) {
+                    toast.error("Veuillez d'abord compléter votre fiche militaire.");
+                    setProfileData({ ...currentUser, ... (currentUser?.pendingModifications || {}) });
+                    setShowProfileModal(true);
+                  } else {
+                    toast.error("Votre fiche est en cours de validation par l'administration. Veuillez patienter.");
+                  }
+                  return;
+                }
                 setEditingRequest(null); 
                 setFormData({ 
                   membre: '', 
@@ -629,10 +724,10 @@ export default function Dashboard() {
                 }); 
                 setShowModal(true); 
               }}
-              className="inline-flex items-center px-4 py-2.5 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-[#008a4b] hover:bg-[#00703c] transition-colors"
+              className={`inline-flex items-center px-4 py-2.5 border border-transparent rounded-xl shadow-md text-sm font-bold text-white transition-colors ${!isValidated ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#008a4b] hover:bg-[#00703c]'}`}
             >
               <UserPlus className="mr-2 h-4 w-4" />
-              Nouveau membre (FIF)
+              Enrôler un ayant droit (Membre de famille)
             </button>
             <button 
               onClick={handleLogout}
@@ -645,26 +740,30 @@ export default function Dashboard() {
         </div>
 
         {/* Profile incomplete warning banner */}
-        {!isProfileComplete && currentUser && (
-          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-amber-900 transition-all duration-300">
+        {(isProfileIncomplete || isPendingValidation) && !!currentUser && (
+          <div className={`mb-6 p-4 border rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all duration-300 ${isPendingValidation ? 'bg-blue-50 border-blue-200 text-blue-900' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
             <div className="flex items-start gap-3">
-              <Info className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              {isPendingValidation ? <Clock className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" /> : <Info className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />}
               <div>
-                <p className="font-extrabold text-sm">Fiche militaire non complétée !</p>
-                <p className="text-xs text-amber-800 mt-1">Pour valider l'enrôlement de votre famille, vous devez remplir les informations administratives du militaire titulaire de la carte.</p>
+                <p className="font-extrabold text-sm">{isPendingValidation ? 'Informations en cours de validation' : 'Profil Incomplet - Action Requise !'}</p>
+                <p className={`text-xs mt-1 ${isPendingValidation ? 'text-blue-800' : 'text-amber-800'}`}>
+                  {isPendingValidation ? "Vos informations administratives ont été soumises et sont en attente de validation par l'administration de la CAMA." : "Pour valider l'enrôlement de votre famille, vous devez impérativement compléter les informations administratives du militaire titulaire."}
+                </p>
               </div>
             </div>
-            <button 
-              onClick={() => setShowProfileModal(true)}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-all self-start sm:self-center uppercase tracking-wider"
-            >
-              Remplir la fiche militaire
-            </button>
+            {isProfileIncomplete && (
+              <button 
+                onClick={() => { setProfileData({ ...currentUser, ... (currentUser?.pendingModifications || {}) }); setShowProfileModal(true); }}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-all self-start sm:self-center uppercase tracking-wider whitespace-nowrap animate-pulse"
+              >
+                Compléter ma fiche
+              </button>
+            )}
           </div>
         )}
 
         {/* User Info Card with military details */}
-        {currentUser && (
+        {!!currentUser && (
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-8 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-3 bg-slate-50 border-l border-b border-gray-200 rounded-bl-xl text-xs font-mono font-bold text-gray-400">
               SECTION 1 : MILITAIRE
@@ -702,13 +801,13 @@ export default function Dashboard() {
                   <span className="flex items-center"><Mail className="w-4 h-4 mr-1.5 text-gray-400" /> {currentUser.email}</span>
                   <span className="flex items-center bg-[#008a4b]/5 px-2 py-0.5 rounded-lg border border-[#008a4b]/10"><ShieldCheck className="w-4 h-4 mr-1.5 text-[#008a4b]" /> N° Dossier CAMA: <strong className="ml-1 text-gray-900 tracking-wider font-black uppercase">{currentUser.numDossier || 'Non Attribué'}</strong></span>
                   <span className="flex items-center"><Shield className="w-4 h-4 mr-1.5 text-gray-400" /> Carte CAMA: <strong className="ml-1 text-[#008a4b]">{currentUser.numCarteCama || 'En cours'}</strong></span>
-                  {currentUser.statut === 'Modif. à Valider' && (
+                  {(currentUser.statut === 'Modif. à Valider' || currentUser.statut === 'En cours de validation') && (
                     <span className="flex items-center text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full text-[10px] border border-amber-100">
-                      <Clock className="w-3 h-3 mr-1" /> Modification en attente de validation
+                      <Clock className="w-3 h-3 mr-1" /> {currentUser.statut === 'Modif. à Valider' ? 'En cours de validation' : 'En cours de validation'}
                     </span>
                   )}
                   <button 
-                    onClick={() => setShowProfileModal(true)}
+                    onClick={() => { setProfileData({ ...currentUser, ... (currentUser?.pendingModifications || {}) }); setShowProfileModal(true); }}
                     className="ml-auto text-xs font-bold text-[#008a4b] hover:underline"
                   >
                     Modifier ma fiche administrative &rarr;
@@ -830,7 +929,7 @@ export default function Dashboard() {
           {/* Side Column: History */}
           <div className="bg-white shadow-sm border border-gray-200 rounded-2xl overflow-hidden flex flex-col h-fit">
             <div className="px-6 py-5 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
-              <History className="w-5 h-5 text-gray-500" />
+              <HistoryIcon className="w-5 h-5 text-gray-500" />
               <h3 className="text-lg leading-6 font-bold text-gray-900 uppercase tracking-tight">Historique des Actions</h3>
             </div>
             <div className="p-6 space-y-6 max-h-[600px] overflow-y-auto custom-scrollbar text-left">
@@ -1097,7 +1196,7 @@ export default function Dashboard() {
                       <Upload className="mx-auto h-9 w-9 text-gray-300 group-hover:text-[#008a4b] transition-colors" />
                       <div className="mt-2 text-xs text-gray-650">
                         <span className="text-[#008a4b] font-extrabold">Téléverser les pièces justificatives</span>
-                        <p className="text-[9px] uppercase font-bold text-gray-450 mt-1">Glissez-déposez ou cliquez (Images / PDFs, max 2Mo par fichier)</p>
+                        <p className="text-[9px] uppercase font-bold text-gray-450 mt-1">Formats acceptés : PDF, JPG, PNG (Max 10 Mo par fichier)</p>
                       </div>
                       <input type="file" multiple onChange={handleFileChange} accept="image/*,application/pdf" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                     </div>

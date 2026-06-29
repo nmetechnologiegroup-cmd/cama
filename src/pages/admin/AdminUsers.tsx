@@ -1,6 +1,7 @@
 import { useState, useMemo, FormEvent, useEffect } from 'react';
-import { Search, UserPlus, Filter, Edit2, Trash2, Mail, X, Check, Save, Shield, ShieldCheck, ShieldAlert, Key, Users as UsersIcon, CheckSquare, Square, Lock, Activity, RotateCcw, CheckCircle, Wand2 } from 'lucide-react';
+import { Search, UserPlus, Filter, Edit2, Trash2, Mail, X, Check, Save, Shield, ShieldCheck, ShieldAlert, Key, Users as UsersIcon, CheckSquare, Square, Lock, Activity, RotateCcw, CheckCircle, Wand2, History as HistoryIcon, FileText, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import toast from 'react-hot-toast';
 import { getUsers, addUser, editUser, deleteUser, User, getAdminUsers, addAdminUser, editAdminUser, deleteAdminUser, AdminUser, getNotificationTemplates, saveNotificationTemplate, personalizeMessage, NotificationTemplate, getSiteSettings, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
 
 export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'assures' | 'admins' | 'templates'; hideTabs?: boolean } = {}) {
@@ -78,11 +79,27 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
     }
   };
 
-  const [statusFilter, setStatusFilter] = useState<'Tous' | 'Actif' | 'Inactif' | 'Modif. à Valider' | 'En attente'>('Tous');
+  const [statusFilter, setStatusFilter] = useState<'Tous' | 'Actif' | 'Inactif' | 'Incomplet' | 'En cours de validation' | 'Validé'>('Tous');
+  
+  // Settings for dossier format
+  const [siteSettings, setSiteSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
+  useEffect(() => { getSiteSettings().then(setSiteSettings); }, []);
 
   // Comparison Modal
   const [showComparisonModal, setShowComparisonModal] = useState(false);
   const [userToValidate, setUserToValidate] = useState<User | null>(null);
+
+  // FIF Modal for Assured details
+  const [isFIFModalOpen, setIsFIFModalOpen] = useState(false);
+  const [selectedUserForFIF, setSelectedUserForFIF] = useState<User | null>(null);
+
+  const userMergedForFIF = useMemo(() => {
+    if (!selectedUserForFIF) return null;
+    return {
+      ...selectedUserForFIF,
+      ...(selectedUserForFIF.pendingModifications || {})
+    };
+  }, [selectedUserForFIF]);
 
   // Filter assured users lists
   const filteredUsers = useMemo(() => {
@@ -93,7 +110,11 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
         user.email.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchCorp = corpFilter === 'Tous' || user.corp === corpFilter;
-      const matchStatus = statusFilter === 'Tous' || (statusFilter === 'Modif. à Valider' ? user.statut === 'Modif. à Valider' : statusFilter === 'En attente' ? user.statut === 'En attente' : user.status === statusFilter);
+      const matchStatus = statusFilter === 'Tous' || (
+        statusFilter === 'Actif' ? user.status === 'Actif' :
+        statusFilter === 'Inactif' ? user.status === 'Inactif' :
+        user.statut === statusFilter
+      );
       
       return matchSearch && matchCorp && matchStatus;
     });
@@ -163,9 +184,7 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
   };
 
   const generateDossierId = () => {
-    const [settings, setSettings] = useState<any>(DEFAULT_SITE_SETTINGS);
-  useEffect(() => { getSiteSettings().then(setSettings); }, []);
-    const format = settings.dossierIdFormat || 'CAMA-{YYYY}-{SEQ}';
+    const format = siteSettings.dossierIdFormat || 'CAMA-{YYYY}-{SEQ}';
     
     const year = new Date().getFullYear().toString();
     const allDossierIds = users.map(u => u.numDossier).filter(Boolean) as string[];
@@ -194,7 +213,7 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
       const isNumDossierChanged = formNumDossier !== (editingUser.numDossier || '');
       
       if (isNumDossierChanged && !formJustification) {
-        alert('Un motif ou justificatif est obligatoire pour modifier le numéro de dossier.');
+        toast.error('Un motif ou justificatif est obligatoire pour modifier le numéro de dossier.');
         return;
       }
 
@@ -212,6 +231,8 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
       try {
         const result = await editUser(updatedUser, isNumDossierChanged ? formJustification : undefined);
         setUsers(result);
+        setIsModalOpen(false);
+        toast.success("Modifications enregistrées avec succès.");
         
         // Auto-send notification if numDossier was assigned/changed
         if (isNumDossierChanged) {
@@ -227,11 +248,11 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
               '{{MOTIF}}': formJustification
             });
             console.log(`Notification envoyée à ${formEmail}: ${personalizedBody}`);
-            alert(`Une notification a été envoyée à l'assuré pour l'informer de son numéro de dossier.`);
+            toast.success(`Une notification a été envoyée à l'assuré pour l'informer de son numéro de dossier.`);
           }
         }
       } catch (error: any) {
-        alert(error.message);
+        toast.error(error.message);
         return;
       }
     } else {
@@ -243,7 +264,8 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
         corp: formCorp,
         email: formEmail,
         status: formStatus,
-        numDossier: formNumDossier
+        numDossier: formNumDossier,
+        statut: (formNumDossier ? 'En cours de validation' : 'Incomplet') as 'En cours de validation' | 'Incomplet'
       };
       
       try {
@@ -259,11 +281,11 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                 '{{PRENOM}}': formPrenoms,
                 '{{NUM_DOSSIER}}': formNumDossier
               });
-              alert(`Assuré créé et notification envoyée.`);
+              toast.success(`Assuré créé et notification envoyée.`);
            }
         }
       } catch (error: any) {
-        alert(error.message);
+        toast.error(error.message);
         return;
       }
     }
@@ -277,7 +299,7 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
 
     if (editingAdmin) {
       if (editingAdmin.id === 1 || editingAdmin.id < 0) {
-        alert("Ce Super Administrateur système ne peut pas être modifié.");
+        toast.error("Ce Super Administrateur système ne peut pas être modifié.");
         return;
       }
       const updatedAdmin: AdminUser = {
@@ -318,20 +340,27 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
     const result = saveNotificationTemplate(updatedTemplate);
     setTemplates(result);
     setEditingTemplate(null);
-    alert('Modèle de notification mis à jour avec succès.');
+    toast.success('Modèle de notification mis à jour avec succès.');
   };
 
   const handleDelete = async (id: number) => {
-    const result = deleteUser(id);
-    setUsers(result);
+    if (true) {
+      try {
+        const result = await deleteUser(id);
+        setUsers(result);
+        toast.success("Compte supprimé avec succès.");
+      } catch (err: any) {
+        toast.error(err.message);
+      }
+    }
   };
 
-  const handleAdminDelete = (id: number) => {
+  const handleAdminDelete = async (id: number) => {
     if (id === 1 || id < 0) {
-      alert("Ce Super Administrateur système ne peut pas être supprimé.");
+      toast.error("Ce Super Administrateur système ne peut pas être supprimé.");
       return;
     }
-    const result = deleteAdminUser(id);
+    const result = await deleteAdminUser(id);
     setAdmins(result);
   };
 
@@ -349,7 +378,7 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
     setUsers(result);
     setShowComparisonModal(false);
     setUserToValidate(null);
-    alert(`Modifications de profil pour ${user.name} approuvées avec succès.`);
+    toast.success(`Modifications de profil pour ${user.name} approuvées avec succès.`);
   };
 
   const handleRejectModifications = async (user: User) => {
@@ -363,7 +392,7 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
     setUsers(result);
     setShowComparisonModal(false);
     setUserToValidate(null);
-    alert(`Modifications de profil pour ${user.name} rejetées.`);
+    toast.success(`Modifications de profil pour ${user.name} rejetées.`);
   };
 
   return (
@@ -492,11 +521,13 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                   onChange={(e) => setStatusFilter(e.target.value as any)}
                   className="bg-white border border-gray-200 rounded-xl px-4 py-2 text-sm font-bold text-gray-700 outline-none focus:ring-2 focus:ring-[#008a4b]/20"
                 >
-                   <option value="Tous">Tous les statuts</option>
-                   <option value="Actif">Comptes Actifs</option>
-                   <option value="Inactif">Comptes Inactifs</option>
-                   <option value="En attente">Nouveaux Assurés à Valider</option>
-                   <option value="Modif. à Valider">Modifications à Valider</option>
+                    <option value="Tous">Tous les statuts</option>
+                    <option value="Actif">Comptes Actifs</option>
+                    <option value="Inactif">Comptes Inactifs</option>
+                    <option value="Incomplet">Profils Incomplets</option>
+                    <option value="En cours de validation">À Valider (Complets)</option>
+                    <option value="Modif. à Valider">Modifications à Valider</option>
+                    <option value="Validé">Comptes Validés</option>
                 </select>
               </div>
             </div>
@@ -554,9 +585,14 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                               MODIF. EN ATTENTE
                             </span>
                           )}
-                          {u.statut === 'En attente' && (
+                          {(u.statut === 'En attente' || u.statut === 'En cours de validation') && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-blue-700 border border-blue-200 animate-pulse">
-                              NOUVEAU COMPTE
+                              À VALIDER
+                            </span>
+                          )}
+                          {u.statut === 'Incomplet' && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200">
+                              INCOMPLET
                             </span>
                           )}
                           {u.statut === 'Validé' && (
@@ -579,25 +615,76 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                             <ShieldAlert className="w-4 h-4" />
                           </button>
                         )}
-                        {u.statut === 'En attente' && (
+                        {(u.status === 'Inactif' && u.statut === 'En attente') && (
                           <button 
                             onClick={async (e) => {
-                              if (confirm(`Voulez-vous valider le compte assuré de ${u.name} ${u.prenoms || ''} ?`)) {
-                                const updatedUser = {
-                                  ...u,
-                                  statut: 'Validé'
-                                };
-                                const res = await editUser(updatedUser);
-                                setUsers(res);
-                                alert(`Le compte de ${u.name} a été validé avec succès.`);
+                              if (true) {
+                                try {
+                                  const updatedUser = {
+                                    ...u,
+                                    status: 'Actif' as const,
+                                    statut: 'Incomplet' as const
+                                  };
+                                  const res = await editUser(updatedUser);
+                                  setUsers(res);
+                                  toast.success(`Le compte de ${u.name} a été approuvé et activé.`);
+                                  
+                                  // Simulation d'envoi d'email
+                                  console.log(`[EMAIL SIMULATION] Destinataire: ${u.email}
+Objet: Approbation et Activation de votre compte personnel CAMA
+
+Bonjour Adjudant ${u.name},
+
+Votre compte personnel de la Caisse d'Assurance Maladie des Armées (CAMA) a été approuvé et activé par l'administration.
+Vous pouvez désormais vous connecter et commencer l'enrôlement de vos ayants droit.
+
+Cordialement,
+L'équipe CAMA`);
+                                } catch (err: any) {
+                                  toast.error(`Erreur: ${err.message}`);
+                                }
                               }
                             }}
-                            className="text-green-600 bg-green-50 hover:bg-green-100 p-2 rounded-lg transition-colors mx-1 font-bold animate-bounce" 
-                            title="Valider le Nouveau Compte"
+                            className="text-[#008a4b] bg-green-50 hover:bg-green-100 p-2 rounded-lg transition-colors mx-1 font-bold animate-pulse" 
+                            title="Approuver & Activer le Compte"
                           >
-                            <Check className="w-4 h-4" />
+                            <ShieldCheck className="w-4 h-4" />
                           </button>
                         )}
+                        {(u.status === 'Actif' && (u.statut === 'En attente' || u.statut === 'En cours de validation')) && (
+                          <button 
+                            onClick={async (e) => {
+                              if (true) {
+                                try {
+                                  const updatedUser = {
+                                    ...u,
+                                    status: 'Actif' as const,
+                                    statut: 'Validé' as const
+                                  };
+                                  const res = await editUser(updatedUser);
+                                  setUsers(res);
+                                  toast.success(`Le compte de ${u.name} a été validé avec succès.`);
+                                } catch (err: any) {
+                                  toast.error(`Erreur: ${err.message}`);
+                                }
+                              }
+                            }}
+                            className="text-green-600 bg-green-50 hover:bg-green-100 p-2 rounded-lg transition-colors mx-1 font-bold animate-pulse" 
+                            title="Valider le Nouveau Compte"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button 
+                          onClick={() => {
+                            setSelectedUserForFIF(u);
+                            setIsFIFModalOpen(true);
+                          }}
+                          className="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 p-2 rounded-lg transition-colors mx-1 font-bold" 
+                          title="Consulter la Fiche FIF de l'Assuré"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </button>
                         <button 
                           onClick={() => handleOpenEdit(u)}
                           className="text-blue-600 bg-blue-50 hover:bg-blue-100 p-2 rounded-lg transition-colors mx-1 font-bold" 
@@ -895,7 +982,7 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                        {Object.keys(userToValidate.pendingModifications || {}).map(key => (
                          <div key={key}>
                             <p className="text-[9px] font-bold text-gray-400 uppercase">{key}</p>
-                            <p className="text-sm font-bold text-red-600 line-through">{(userToValidate as any)[key] || '—'}</p>
+                            <p className="text-sm font-bold text-red-600 line-through">{String((userToValidate as any)[key]) || '—'}</p>
                          </div>
                        ))}
                     </div>
@@ -919,7 +1006,7 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                 {userToValidate.modificationTraces && userToValidate.modificationTraces.length > 0 && (
                   <div className="mt-8">
                      <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                       <History className="w-3.5 h-3.5" /> Historique des traces de modification
+                       <HistoryIcon className="w-3.5 h-3.5" /> Historique des traces de modification
                     </h4>
                     <div className="space-y-2">
                        {userToValidate.modificationTraces.map(trace => (
@@ -946,6 +1033,288 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                 >
                   <Check className="w-4 h-4" /> Approuver & Mettre à jour
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* FIF MODAL - FICHE D'INFORMATION DE L'ASSURÉ (MILITAIRE) */}
+      <AnimatePresence>
+        {isFIFModalOpen && selectedUserForFIF && userMergedForFIF && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm text-left overflow-y-auto">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full border border-gray-100 overflow-hidden my-8 max-h-[90vh] flex flex-col"
+            >
+              <div className="bg-[#008a4b] text-white px-6 py-5 flex justify-between items-center flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <FileText className="w-6 h-6 text-white" />
+                  <div>
+                    <h3 className="text-lg font-black uppercase tracking-tight">Fiche FIF de l'Assuré (Militaire)</h3>
+                    <p className="text-xs text-green-100 font-bold uppercase tracking-widest mt-1">
+                      {userMergedForFIF.name} {userMergedForFIF.prenoms || ''} (Matricule: {userMergedForFIF.matricule})
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => setIsFIFModalOpen(false)} className="bg-white/10 hover:bg-white/20 p-2 rounded-full transition text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto flex-1 space-y-6">
+                
+                {/* Header Branding */}
+                <div className="flex justify-between items-start border-b-2 border-gray-100 pb-6">
+                  <div className="space-y-1">
+                    <h2 className="text-2xl font-black text-[#008a4b] leading-none">C.A.M.A.</h2>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Caisse d'Assurance Maladie des Armées</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-black text-gray-900 uppercase">Fiche d'identification Famille (FIF)</p>
+                    <p className="text-[10px] text-[#008a4b] font-bold mt-1 uppercase tracking-wider">Section I : Informations Administratives</p>
+                  </div>
+                </div>
+
+                {/* Completion Status Banner */}
+                {(() => {
+                  const fields = [
+                    { key: 'name', label: 'NOM', value: userMergedForFIF.name, section: 'identité', required: true },
+                    { key: 'prenoms', label: 'PRENOMS', value: userMergedForFIF.prenoms, section: 'identité', required: true },
+                    { key: 'sexe', label: 'SEXE', value: userMergedForFIF.sexe, section: 'identité', required: true },
+                    { key: 'matricule', label: 'MATRICULE MILITAIRE', value: userMergedForFIF.matricule, section: 'identité', required: true },
+                    { key: 'numInformatique', label: 'N° INFORMATIQUE', value: userMergedForFIF.numInformatique, section: 'identité', required: true },
+                    { key: 'grade', label: 'GRADE', value: userMergedForFIF.grade, section: 'statut', required: true },
+                    { key: 'categorie', label: 'CATEGORIE', value: userMergedForFIF.categorie, section: 'statut', required: true },
+                    { key: 'numIup', label: 'N° IUP', value: userMergedForFIF.numIup, section: 'statut', required: true },
+                    { key: 'structArmee', label: 'ARMEE', value: userMergedForFIF.structArmee, section: 'rattachement', required: true },
+                    { key: 'structRegion', label: 'REGION', value: userMergedForFIF.structRegion, section: 'rattachement', required: true },
+                    { key: 'structCorps', label: 'CORPS', value: userMergedForFIF.structCorps || userMergedForFIF.corp, section: 'rattachement', required: true },
+                    { key: 'telephones', label: 'TELEPHONES', value: userMergedForFIF.telephones || userMergedForFIF.phone, section: 'contacts', required: true },
+                    { key: 'email', label: 'E-MAIL', value: userMergedForFIF.email, section: 'contacts', required: true },
+                    { key: 'personneAPrevenir', label: 'PERSONNE A PREVENIR', value: userMergedForFIF.personneAPrevenir, section: 'contacts', required: true },
+                    { key: 'personneAPrevenirTel', label: 'TEL (PERS. PREVENIR)', value: userMergedForFIF.personneAPrevenirTel, section: 'contacts', required: true },
+                  ];
+
+                  const missing = fields.filter(f => f.required && (!f.value || f.value.toString().trim() === ''));
+                  const complete = missing.length === 0;
+
+                  return (
+                    <div className="space-y-6">
+                      {complete ? (
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                          <div className="p-2 bg-emerald-500 rounded-lg text-white">
+                            <ShieldCheck className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-emerald-900 uppercase tracking-tight">Dossier de l'Assuré Complet (100%)</h4>
+                            <p className="text-xs text-emerald-700 font-medium mt-0.5">
+                              Toutes les informations requises de la section 1 du formulaire FIF ont été renseignées par le militaire.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 shadow-sm">
+                          <div className="p-2 bg-amber-500 rounded-lg text-white mt-0.5">
+                            <ShieldAlert className="w-6 h-6 animate-pulse" />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <h4 className="text-sm font-black text-amber-950 uppercase tracking-tight">Dossier de l'Assuré Incomplet</h4>
+                              <span className="px-2.5 py-0.5 text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-300 rounded-full uppercase">
+                                {missing.length} champ(s) manquant(s)
+                              </span>
+                            </div>
+                            <p className="text-xs text-amber-700 font-medium mt-1">
+                              Certaines informations administratives obligatoires de la fiche d'identification ne sont pas encore renseignées.
+                            </p>
+                            <div className="mt-2 text-[10px] text-amber-800 font-bold flex flex-wrap gap-x-2 gap-y-1 bg-amber-100/50 p-2 rounded-lg border border-amber-200">
+                              <span className="uppercase text-amber-950">Champs manquants :</span>
+                              {missing.map((f) => (
+                                <span key={f.key} className="bg-white px-1.5 py-0.5 rounded border border-amber-300/60 text-amber-900">
+                                  {f.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Detail Fields Categorized */}
+                      <div className="space-y-6">
+                        {/* Civil/Military Identity */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                            <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.1</span>
+                            <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Identité Civile & Militaire</h4>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {fields.filter(f => f.section === 'identité').map(field => {
+                              const isMissing = !field.value || field.value.toString().trim() === '';
+                              return (
+                                <div key={field.key} className={`p-3 rounded-xl border transition-all ${isMissing ? 'bg-amber-50/40 border-dashed border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+                                  <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                  <span className={`font-black text-sm uppercase block truncate mt-0.5 ${isMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                    {field.value || 'Non renseigné'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Status/Grades */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                            <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.2</span>
+                            <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Grades, Catégories & N° IUP</h4>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {fields.filter(f => f.section === 'statut').map(field => {
+                              const isMissing = !field.value || field.value.toString().trim() === '';
+                              return (
+                                <div key={field.key} className={`p-3 rounded-xl border transition-all ${isMissing ? 'bg-amber-50/40 border-dashed border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+                                  <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                  <span className={`font-black text-sm uppercase block truncate mt-0.5 ${isMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                    {field.value || 'Non renseigné'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Structure */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                            <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.3</span>
+                            <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Structure de Rattachement (Armée/Corps)</h4>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {fields.filter(f => f.section === 'rattachement').map(field => {
+                              const isMissing = !field.value || field.value.toString().trim() === '';
+                              return (
+                                <div key={field.key} className={`p-3 rounded-xl border transition-all ${isMissing ? 'bg-amber-50/40 border-dashed border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+                                  <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                  <span className={`font-black text-sm uppercase block truncate mt-0.5 ${isMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                    {field.value || 'Non renseigné'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Contacts */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                            <span className="text-xs font-black text-[#008a4b] bg-emerald-50 px-2 py-0.5 rounded-md">1.4</span>
+                            <h4 className="text-xs font-black text-gray-500 uppercase tracking-wider">Contacts & Personnes à Prévenir</h4>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {fields.filter(f => f.section === 'contacts').map(field => {
+                              const isMissing = !field.value || field.value.toString().trim() === '';
+                              return (
+                                <div key={field.key} className={`p-3 rounded-xl border transition-all ${isMissing ? 'bg-amber-50/40 border-dashed border-amber-200' : 'bg-slate-50 border-slate-100'}`}>
+                                  <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest">{field.label}</span>
+                                  <span className={`font-black text-xs block truncate mt-0.5 ${isMissing ? 'text-amber-500 italic font-medium' : 'text-gray-800'}`}>
+                                    {field.value || 'Non renseigné'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="bg-slate-50 px-8 py-5 flex flex-col sm:flex-row gap-3 justify-between border-t border-gray-100 flex-shrink-0">
+                <div>
+                  {userMergedForFIF.statut === 'En attente' || userMergedForFIF.statut === 'En cours de validation' || userMergedForFIF.statut === 'Modif. à Valider' ? (
+                    <span className="text-xs font-black text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-xl flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-500" /> Dossier en attente de validation
+                    </span>
+                  ) : userMergedForFIF.statut === 'Validé' ? (
+                    <span className="text-xs font-black text-green-700 bg-green-50 border border-green-200 px-3 py-2 rounded-xl flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-[#008a4b]" /> Assuré validé et actif
+                    </span>
+                  ) : (
+                    <span className="text-xs font-black text-gray-600 bg-gray-50 border border-gray-200 px-3 py-2 rounded-xl flex items-center gap-2">
+                      Statut: {userMergedForFIF.statut || 'N/A'}
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex gap-2">
+                  {/* Validation Actions directly from the modal */}
+                  {(userMergedForFIF.statut === 'En attente' || userMergedForFIF.statut === 'En cours de validation' || userMergedForFIF.statut === 'Modif. à Valider' || userMergedForFIF.statut === 'Incomplet' || selectedUserForFIF.status === 'Inactif') && (
+                    <>
+                      <button 
+                        onClick={async () => {
+                          const reason = prompt("Veuillez saisir le motif de rejet / dossier incomplet :");
+                          if (reason === null) return;
+                          if (!reason.trim()) {
+                            toast.error("Le motif est obligatoire.");
+                            return;
+                          }
+                          try {
+                            const updatedUser = {
+                              ...selectedUserForFIF,
+                              statut: 'Incomplet' as const,
+                              notes: reason
+                            };
+                            const res = await editUser(updatedUser);
+                            setUsers(res);
+                            setSelectedUserForFIF(updatedUser);
+                            toast.success(`Dossier de l'assuré signalé incomplet.`);
+                            setIsFIFModalOpen(false);
+                          } catch (err: any) {
+                            toast.error(`Erreur: ${err.message}`);
+                          }
+                        }}
+                        className="px-5 py-2 bg-red-50 text-red-600 hover:bg-red-100 font-bold text-xs rounded-xl transition uppercase tracking-wider"
+                      >
+                        Signaler Incomplet
+                      </button>
+
+                      <button 
+                        onClick={async () => {
+                          try {
+                            const updatedUser = {
+                              ...selectedUserForFIF,
+                              ...(selectedUserForFIF.pendingModifications || {}),
+                              status: 'Actif' as const,
+                              statut: 'Validé' as const,
+                              pendingModifications: undefined
+                            };
+                            const res = await editUser(updatedUser);
+                            setUsers(res);
+                            setSelectedUserForFIF(updatedUser);
+                            toast.success(`Le dossier de ${selectedUserForFIF.name} a été validé avec succès.`);
+                            setIsFIFModalOpen(false);
+                          } catch (err: any) {
+                            toast.error(`Erreur: ${err.message}`);
+                          }
+                        }}
+                        className="px-5 py-2 bg-[#008a4b] hover:bg-[#00703c] text-white font-black text-xs rounded-xl transition uppercase tracking-wider shadow-md"
+                      >
+                        Approuver & Valider
+                      </button>
+                    </>
+                  )}
+                  
+                  <button 
+                    onClick={() => setIsFIFModalOpen(false)}
+                    className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-gray-800 font-bold text-xs rounded-xl transition uppercase tracking-wider"
+                  >
+                    Fermer
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -1161,6 +1530,40 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                         </div>
                       )}
                     </div>
+
+                    {editingUser && (editingUser.grade || editingUser.numCim || editingUser.structArmee) && (
+                      <div className="mt-6 pt-6 border-t border-[#008a4b]/10">
+                        <h5 className="text-[10px] font-black text-[#008a4b] uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                          <Activity className="w-3.5 h-3.5" /> Détails Militaires Renseignés (Lecture Seule)
+                        </h5>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[10px]">
+                          <div className="flex justify-between border-b border-gray-100 py-1">
+                            <span className="text-gray-500">Grade :</span>
+                            <span className="font-bold text-gray-900 uppercase">{editingUser.grade || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-gray-100 py-1">
+                            <span className="text-gray-500">Matricule Militaire :</span>
+                            <span className="font-bold text-gray-900 uppercase">{editingUser.matricule || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-gray-100 py-1">
+                            <span className="text-gray-500">N° IUP / CIM :</span>
+                            <span className="font-bold text-gray-900 uppercase">{editingUser.numIup || editingUser.numCim || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-gray-100 py-1">
+                            <span className="text-gray-500">Structure de Rattachement :</span>
+                            <span className="font-bold text-gray-900 uppercase">{editingUser.structArmee || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-gray-100 py-1">
+                            <span className="text-gray-500">Contact :</span>
+                            <span className="font-bold text-gray-900">{editingUser.telephones || editingUser.phone || 'N/A'}</span>
+                          </div>
+                          <div className="flex justify-between border-b border-gray-100 py-1">
+                            <span className="text-gray-500">Sexe :</span>
+                            <span className="font-bold text-gray-900">{editingUser.sexe || 'M'}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1168,13 +1571,45 @@ export default function AdminUsers({ initialTab, hideTabs }: { initialTab?: 'ass
                   <button 
                     type="button" 
                     onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition"
+                    className="px-4 py-2 bg-gray-100 text-gray-700 font-bold rounded-lg hover:bg-gray-200 transition uppercase tracking-widest text-[10px]"
                   >
                     Annuler
                   </button>
+                  {editingUser && (editingUser.statut === 'En attente' || editingUser.statut === 'En cours de validation' || editingUser.statut === 'Incomplet' || !editingUser.statut) && (
+                    <button 
+                      type="button"
+                      onClick={async () => {
+                        if (true) {
+                          try {
+                            const updatedUser = {
+                              ...editingUser,
+                              name: formName,
+                              prenoms: formPrenoms,
+                              matricule: formMatricule,
+                              corp: formCorp,
+                              email: formEmail,
+                              numDossier: formNumDossier,
+                              status: 'Actif' as const,
+                              statut: 'Validé' as const
+                            };
+                            const res = await editUser(updatedUser);
+                            setUsers(res);
+                            setIsModalOpen(false);
+                            toast.success(`Compte de ${editingUser.name} approuvé et activé.`);
+                          } catch (err: any) {
+                            toast.error(`Erreur: ${err.message}`);
+                          }
+                        }
+                      }}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] rounded-lg shadow transition-all flex items-center gap-2 uppercase tracking-widest"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Approuver le compte
+                    </button>
+                  )}
                   <button 
                     type="submit" 
-                    className="px-5 py-2 bg-[#008a4b] font-bold text-white rounded-lg hover:bg-[#00703c] transition flex items-center shadow"
+                    className="px-5 py-2 bg-[#008a4b] font-bold text-white text-[10px] rounded-lg hover:bg-[#00703c] transition flex items-center shadow uppercase tracking-widest"
                   >
                     <Save className="w-4 h-4 mr-1.5" /> Enregistrer
                   </button>

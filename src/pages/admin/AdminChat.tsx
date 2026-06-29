@@ -151,7 +151,7 @@ export default function AdminChat() {
   };
 
   const handleDeleteDiscussion = async (discId: number) => {
-    if (!confirm("Voulez-vous vraiment supprimer définitivement cette discussion ainsi que tous ses messages ?")) return;
+    // Removed confirm
     try {
       await deleteDiscussion(discId);
       if (selectedDiscussion && selectedDiscussion.id === discId) {

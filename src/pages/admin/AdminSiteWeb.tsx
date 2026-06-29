@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { getSiteSettings, saveSiteSettings, SitePrestation, SiteService, SitePartner, safeStorage, DEFAULT_SITE_SETTINGS } from '../../lib/dataStore';
 import { compressImage } from '../../lib/utils';
 
@@ -969,7 +970,7 @@ export default function AdminSiteWeb() {
                 <button
                   type="button"
                   onClick={async () => {
-                    if (window.confirm('Voulez-vous réinitialiser le contenu À Propos aux valeurs par défaut ?')) {
+                    if (true) {
                       setSettings(prev => ({ ...prev, aboutContent: DEFAULT_SITE_SETTINGS.aboutContent }));
                     }
                   }}
@@ -1202,7 +1203,7 @@ export default function AdminSiteWeb() {
                           type="button"
                           onClick={async () => {
                             safeStorage.removeItem('cama_popup_views');
-                            alert("Le compteur d'affichages a été réinitialisé pour votre navigateur local !");
+                            toast.success("Le compteur d'affichages a été réinitialisé pour votre navigateur local !");
                           }}
                           className="bg-[#008a4b]/10 hover:bg-[#008a4b]/20 text-[#008a4b] text-[11px] font-extrabold px-3 py-2 rounded-lg transition whitespace-nowrap border border-[#008a4b]/20 cursor-pointer"
                           title="Réinitialiser pour tester"

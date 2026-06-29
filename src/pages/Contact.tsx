@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import toast from 'react-hot-toast';
 import { Mail, Phone, MapPin, Send, MessageCircle } from 'lucide-react';
 import { getSiteSettings, DEFAULT_SITE_SETTINGS } from '../lib/dataStore';
 
@@ -9,7 +10,7 @@ export default function Contact() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    alert("Votre message a été envoyé avec succès ! Notre équipe vous répondra dans les plus brefs délais.");
+    toast.success("Votre message a été envoyé avec succès ! Notre équipe vous répondra dans les plus brefs délais.");
   };
 
   return (
