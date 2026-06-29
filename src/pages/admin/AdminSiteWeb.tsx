@@ -174,8 +174,11 @@ export default function AdminSiteWeb() {
     { id: 'footer', label: 'Bas de page (Footer)' }
   ];
 
+  const [isSaving, setIsSaving] = useState(false);
+
   // Handler for publishing changes
   const handlePublish = async () => {
+    setIsSaving(true);
     try {
       await saveSiteSettings(settings);
       setToastMessage({
@@ -194,6 +197,8 @@ export default function AdminSiteWeb() {
         isError: true
       });
       setShowToast(true);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -483,10 +488,11 @@ export default function AdminSiteWeb() {
           </Link>
           <button 
             onClick={handlePublish}
-            className="bg-[#008a4b] text-white px-5 py-2.5 rounded-lg font-bold flex items-center hover:bg-[#00703c] transition shadow-md"
+            disabled={isSaving}
+            className={`bg-[#008a4b] text-white px-5 py-2.5 rounded-lg font-bold flex items-center hover:bg-[#00703c] transition shadow-md ${isSaving ? 'opacity-70 cursor-not-allowed' : ''}`}
           >
-            <Save className="w-4 h-4 mr-2" />
-            Publier les modifications
+            <Save className={`w-4 h-4 mr-2 ${isSaving ? 'animate-spin' : ''}`} />
+            {isSaving ? 'Publication en cours...' : 'Publier les modifications'}
           </button>
         </div>
       </div>

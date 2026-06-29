@@ -379,6 +379,8 @@ export default function Home() {
                         alt={settings.dgName || "Directeur"} 
                         className="w-full h-full object-cover" 
                         referrerPolicy="no-referrer"
+                        loading="lazy"
+                        decoding="async"
                       />
                     ) : (
                       <UserCircle2 className="w-44 h-44 text-slate-300" strokeWidth={1} />
@@ -451,7 +453,7 @@ export default function Home() {
                             className={`w-20 h-20 ${svc.color || 'bg-[#008a4b]'} rounded-full flex items-center justify-center text-white mb-4 shadow-inner overflow-hidden`}
                          >
                            {svc.iconType === 'Image' && svc.imageUrl ? (
-                             <img src={svc.imageUrl} alt={svc.name} className="w-full h-full object-cover" />
+                             <img src={svc.imageUrl} alt={svc.name} className="w-full h-full object-cover" loading="lazy" decoding="async" />
                            ) : svc.iconType === 'Emoji' ? (
                              <span className="text-4xl leading-none">{svc.emoji || '🌟'}</span>
                            ) : (

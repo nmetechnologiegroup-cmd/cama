@@ -889,7 +889,7 @@ export default function Dashboard() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-bold">
-                        <span className="inline-block bg-slate-100 text-slate-800 rounded px-2.5 py-1 text-xs font-extrabold">{member.lien}</span>
+                        <span className="inline-block bg-slate-100 text-slate-800 rounded px-2.5 py-1 text-xs font-extrabold">{member.lien === 'Conjoint' ? (currentUser.sexe === 'F' ? 'Conjoint' : 'Conjointe') : member.lien}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-xs font-semibold text-gray-700 leading-tight">Né le {member.dateNaissance} {member.lieuNaissance && `à ${member.lieuNaissance}`}</div>
@@ -1009,7 +1009,7 @@ export default function Dashboard() {
                     onChange={e => setFormData({...formData, lien: e.target.value})} 
                     className="mt-1 block w-full bg-white border border-gray-300 text-gray-900 rounded-lg shadow-sm py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-[#008a4b]/20 focus:border-[#008a4b] font-bold sm:text-sm"
                   >
-                    <option value="Conjoint">Conjoint (Marié(e) à la mairie uniquement)</option>
+                    <option value="Conjoint">{currentUser.sexe === 'F' ? 'Conjoint' : 'Conjointe'} (Marié(e) à la mairie uniquement)</option>
                     <option value="Enfant">Enfant (De 0 à 26 ans)</option>
                     <option value="Parent">Parent ascendant</option>
                     <option value="Autre">Autre</option>
